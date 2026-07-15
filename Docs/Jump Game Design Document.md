@@ -81,7 +81,7 @@ The current build completes a level when the grounded miner reaches its exit. Co
 - After death, the player restarts from the beginning or the latest checkpoint.
 - The outline proposes “3–5 HP per level.” The exact meaning must be confirmed.
 
-**Decision needed:** Does “3–5 HP” mean health points, hearts/hits, or a limited number of lives/attempts?
+**Resolved in version 0.3:** The player has five hearts per level and three persistent starting lives.
 
 ### Difficulty principles
 
@@ -291,7 +291,7 @@ Level 1 is part of the bronze tier. Material tiers are environmental progression
 - Combine horizontal and vertical platform movement gradually.
 - Use falling spikes near moving platforms only after each is understood separately.
 - Add breakable-platform routes that change based on carried weight.
-- Balance the intended health amount after clarifying whether the target is HP, hearts, or lives.
+- Balance five-heart difficulty and the three-life economy through playtesting.
 
 ---
 
@@ -467,7 +467,7 @@ Copy this section for every new level.
 1. Does a level end by reaching an exit, collecting a key, collecting all required crystals, or a combination of these?
 2. Are keys level objectives, skip tokens, or both?
 3. Does skipping a level cost gems, a key, or another resource?
-4. Does “3–5 HP per level” mean health points, hearts/hits, or lives?
+4. How quickly should heart upgrades and extra lives increase in price after repeated purchases?
 5. Is “coin” a separate currency from gems, or should the game use only gems?
 6. Which exact level should first introduce moving platforms within the planned Levels 11–15 machinery section?
 7. What key should the player press to jump, pause, and use an inventory item?
