@@ -1,26 +1,40 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
+[DefaultExecutionOrder(-1000)]
 public sealed class AutomatedPlaytester : MonoBehaviour
 {
     private const float DefaultTimeoutSeconds = 120f;
     private const float FailureHeight = -30f;
 
+    private readonly List<AutomatedPlaytestWaypoint> waypoints = new();
+
     private HeroMovement hero;
+    private LevelExitDoor exitDoor;
     private float startedAt;
     private float jumpReleaseAt;
     private float nextJumpAt;
     private int initialCollectibleCount;
+    private int jumpAttempts;
+    private int waypointIndex;
     private string reportPath;
+    private string startingScenePath;
     private float timeoutSeconds;
     private float nextProgressLogAt;
     private Vector3 lastMovingPosition;
+    private Vector3 lastPlayerPosition;
     private float lastMovedAt;
     private float escapeUntil;
     private float escapeDirection;
+    private int forcedJumpReleaseFrames;
+    private int lastHealth;
+    private int lastRespawnCount;
+    private bool goalInitialized;
+    private bool usesExitDoor;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void StartWhenRequested()
@@ -49,49 +63,79 @@ public sealed class AutomatedPlaytester : MonoBehaviour
         Time.timeScale = 4f;
         startedAt = Time.unscaledTime;
         nextProgressLogAt = startedAt + 5f;
+        startingScenePath = SceneManager.GetActiveScene().path;
         FindHeroAndBegin();
     }
 
     private void Update()
     {
+        if (usesExitDoor && goalInitialized && SceneManager.GetActiveScene().path != startingScenePath)
+        {
+            Finish(true, "Reached the exit door and left the level.", true);
+            return;
+        }
+
+        if (Time.unscaledTime - startedAt > timeoutSeconds)
+        {
+            string goal = usesExitDoor ? "the exit door" : "every required crystal";
+            Finish(false, $"The virtual controller timed out before reaching {goal}. " +
+                "This is not proof that the level is impossible.", false);
+            return;
+        }
+
         if (hero == null)
         {
             FindHeroAndBegin();
             return;
         }
 
-        List<GameObject> collectibles = FindCollectibles();
-        if (collectibles.Count == 0)
+        lastPlayerPosition = hero.transform.position;
+        PlayerHealth health = hero.GetComponent<PlayerHealth>();
+        if (health != null)
         {
-            Finish(true, "Collected every required crystal.");
-            return;
-        }
-
-        if (Time.unscaledTime - startedAt > timeoutSeconds)
-        {
-            Finish(false, "The virtual controller timed out before collecting every required crystal. " +
-                "This is not proof that the level is impossible.");
-            return;
+            lastHealth = health.CurrentHealth;
+            lastRespawnCount = health.RespawnCount;
         }
 
         if (hero.transform.position.y < FailureHeight)
         {
-            Finish(false, $"The player fell below y={FailureHeight}.");
+            Finish(false, $"The player fell below y={FailureHeight}.", false);
             return;
         }
 
-        Transform target = ChooseTarget(collectibles);
+        Transform target;
+        int goalsRemaining;
+
+        if (usesExitDoor)
+        {
+            AdvancePastReachedWaypoints();
+            target = waypointIndex < waypoints.Count ? waypoints[waypointIndex].transform : exitDoor.transform;
+            goalsRemaining = waypoints.Count - waypointIndex + 1;
+        }
+        else
+        {
+            List<GameObject> collectibles = FindCollectibles();
+            if (collectibles.Count == 0)
+            {
+                Finish(true, "Collected every required crystal.", false);
+                return;
+            }
+
+            target = ChooseCollectibleTarget(collectibles);
+            goalsRemaining = collectibles.Count;
+        }
+
         if (Time.unscaledTime >= nextProgressLogAt)
         {
-            Debug.Log($"AUTOMATED PLAYTEST: {collectibles.Count} remain; player={hero.transform.position}; " +
-                $"target={target.name} at {target.position}; grounded={hero.IsGrounded}.");
+            Rigidbody2D body = hero.GetComponent<Rigidbody2D>();
+            Debug.Log($"AUTOMATED PLAYTEST: {goalsRemaining} route goals remain; " +
+                $"player={hero.transform.position}; target={target.name} at {target.position}; " +
+                $"grounded={hero.IsGrounded}; velocity={(body == null ? Vector2.zero : body.linearVelocity)}.");
             nextProgressLogAt = Time.unscaledTime + 5f;
         }
+
         float horizontalDistance = target.position.x - hero.transform.position.x;
-        float verticalDistance = target.position.y - hero.transform.position.y;
-        float horizontal = Mathf.Abs(verticalDistance) > 0.75f && Mathf.Abs(horizontalDistance) < 0.3f
-            ? 1f
-            : (Mathf.Abs(horizontalDistance) < 0.15f ? 0f : Mathf.Sign(horizontalDistance));
+        float horizontal = Mathf.Abs(horizontalDistance) < 0.18f ? 0f : Mathf.Sign(horizontalDistance);
 
         if (Vector3.Distance(hero.transform.position, lastMovingPosition) > 0.25f)
         {
@@ -101,8 +145,6 @@ public sealed class AutomatedPlaytester : MonoBehaviour
         else if (Time.unscaledTime - lastMovedAt > 1.5f)
         {
             escapeDirection = horizontal <= 0f ? 1f : -1f;
-            // The playtest runs at 4x speed, so this short real-time pulse is
-            // roughly a half-second controller correction in game time.
             escapeUntil = Time.unscaledTime + 0.15f;
             lastMovedAt = Time.unscaledTime;
             Debug.Log($"AUTOMATED PLAYTEST: stuck recovery moving {escapeDirection}.");
@@ -113,14 +155,25 @@ public sealed class AutomatedPlaytester : MonoBehaviour
             horizontal = escapeDirection;
         }
 
+        if (forcedJumpReleaseFrames > 0)
+        {
+            forcedJumpReleaseFrames--;
+            hero.SetAutomatedInput(0f, false);
+            return;
+        }
+
         if (hero.IsGrounded && Time.unscaledTime >= nextJumpAt)
         {
             jumpReleaseAt = Time.unscaledTime + 0.18f;
             nextJumpAt = Time.unscaledTime + 0.45f;
+            jumpAttempts++;
+            if (jumpAttempts <= 5)
+            {
+                Debug.Log($"AUTOMATED PLAYTEST: jump attempt {jumpAttempts} from {hero.transform.position}.");
+            }
         }
 
-        bool holdJump = Time.unscaledTime < jumpReleaseAt;
-        hero.SetAutomatedInput(horizontal, holdJump);
+        hero.SetAutomatedInput(horizontal, Time.unscaledTime < jumpReleaseAt);
     }
 
     private void FindHeroAndBegin()
@@ -133,23 +186,65 @@ public sealed class AutomatedPlaytester : MonoBehaviour
 
         hero.EnableAutomatedControl(true);
         lastMovingPosition = hero.transform.position;
+        lastPlayerPosition = hero.transform.position;
         lastMovedAt = Time.unscaledTime;
+
+        if (goalInitialized)
+        {
+            return;
+        }
+
+        exitDoor = FindFirstObjectByType<LevelExitDoor>();
+        usesExitDoor = exitDoor != null;
+        waypoints.Clear();
+        waypoints.AddRange(FindObjectsByType<AutomatedPlaytestWaypoint>(FindObjectsSortMode.None)
+            .OrderBy(waypoint => waypoint.Order));
+
         List<GameObject> collectibles = FindCollectibles();
         initialCollectibleCount = collectibles.Count;
-        if (initialCollectibleCount == 0)
+        goalInitialized = true;
+
+        if (!usesExitDoor && initialCollectibleCount == 0)
         {
-            Finish(false, "The scene has no BlueCrystal or BlackBigCrystal objects to use as completion goals.");
+            Finish(false, "The scene has neither an exit door nor required crystals to use as a completion goal.", false);
+            return;
+        }
+
+        Debug.Log(usesExitDoor
+            ? $"AUTOMATED PLAYTEST: using exit-door route with {waypoints.Count} authored waypoints."
+            : $"AUTOMATED PLAYTEST: using {initialCollectibleCount} required crystals as goals.");
+    }
+
+    private void AdvancePastReachedWaypoints()
+    {
+        if (!hero.IsGrounded)
+        {
+            return;
+        }
+
+        while (waypointIndex < waypoints.Count)
+        {
+            Vector2 offset = waypoints[waypointIndex].transform.position - hero.transform.position;
+            Rigidbody2D body = hero.GetComponent<Rigidbody2D>();
+            bool verticallyAligned = Mathf.Abs(offset.y) <= 0.3f;
+            bool horizontallyAligned = Mathf.Abs(offset.x) <= 1.6f;
+            bool settled = body != null && Mathf.Abs(body.linearVelocity.y) <= 0.2f;
+            if (!verticallyAligned || !horizontallyAligned || !settled)
+            {
+                break;
+            }
+
+            Debug.Log($"AUTOMATED PLAYTEST: reached route waypoint {waypoints[waypointIndex].Order}.");
+            waypointIndex++;
+            jumpReleaseAt = 0f;
+            nextJumpAt = Time.unscaledTime;
+            forcedJumpReleaseFrames = 1;
         }
     }
 
-    private Transform ChooseTarget(List<GameObject> collectibles)
+    private Transform ChooseCollectibleTarget(List<GameObject> collectibles)
     {
-        float lowestHeight = float.PositiveInfinity;
-        foreach (GameObject collectible in collectibles)
-        {
-            lowestHeight = Mathf.Min(lowestHeight, collectible.transform.position.y);
-        }
-
+        float lowestHeight = collectibles.Min(collectible => collectible.transform.position.y);
         Transform best = collectibles[0].transform;
         float bestScore = float.PositiveInfinity;
 
@@ -176,22 +271,25 @@ public sealed class AutomatedPlaytester : MonoBehaviour
         return result;
     }
 
-    private void Finish(bool passed, string message)
+    private void Finish(bool passed, string message, bool exitReached)
     {
         hero?.SetAutomatedInput(0f, false);
-        PlayerHealth health = hero == null ? null : hero.GetComponent<PlayerHealth>();
         var result = new PlaytestResult
         {
-            scene = SceneManager.GetActiveScene().path,
+            scene = startingScenePath,
+            completionMode = usesExitDoor ? "ExitDoor" : "RequiredCrystals",
             passed = passed,
             message = message,
+            exitReached = exitReached,
+            waypointsCompleted = waypointIndex,
+            totalWaypoints = waypoints.Count,
             startingCollectibles = initialCollectibleCount,
             collectedBlueCrystals = hero == null ? 0 : hero.BlueCrystalCount,
             collectedBlackCrystals = hero == null ? 0 : hero.BlackBigCrystalCount,
-            finalHealth = health == null ? 0 : health.CurrentHealth,
-            respawns = health == null ? 0 : health.RespawnCount,
+            finalHealth = lastHealth,
+            respawns = lastRespawnCount,
             elapsedRealSeconds = Time.unscaledTime - startedAt,
-            finalPlayerPosition = hero == null ? Vector3.zero : hero.transform.position
+            finalPlayerPosition = lastPlayerPosition
         };
 
         string directory = Path.GetDirectoryName(reportPath);
@@ -235,8 +333,12 @@ public sealed class AutomatedPlaytester : MonoBehaviour
     private sealed class PlaytestResult
     {
         public string scene;
+        public string completionMode;
         public bool passed;
         public string message;
+        public bool exitReached;
+        public int waypointsCompleted;
+        public int totalWaypoints;
         public int startingCollectibles;
         public int collectedBlueCrystals;
         public int collectedBlackCrystals;
