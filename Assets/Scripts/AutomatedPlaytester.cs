@@ -35,6 +35,11 @@ public sealed class AutomatedPlaytester : MonoBehaviour
     private int lastRespawnCount;
     private bool goalInitialized;
     private bool usesExitDoor;
+    private bool failOnRespawn;
+    private bool airborneSinceLastWaypoint;
+    private bool startSettled;
+    private int passAfterWaypoints;
+    private string expectedExitSceneName;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void StartWhenRequested()
@@ -60,7 +65,11 @@ public sealed class AutomatedPlaytester : MonoBehaviour
         reportPath = ReadArgument("-playtestReport") ??
             Path.Combine(Application.dataPath, "..", "Logs", "AutomatedPlaytest.json");
         timeoutSeconds = ReadFloatArgument("-playtestTimeout", DefaultTimeoutSeconds);
-        Time.timeScale = 4f;
+        // Keep Update-driven held-jump timing identical to normal play. High time scales can
+        // run several physics steps between Updates and artificially shorten the jump arc.
+        Time.timeScale = 1f;
+        failOnRespawn = Array.IndexOf(Environment.GetCommandLineArgs(), "-playtestFailOnRespawn") >= 0;
+        passAfterWaypoints = ReadIntArgument("-playtestPassAfterWaypoints", 0);
         startedAt = Time.unscaledTime;
         nextProgressLogAt = startedAt + 5f;
         startingScenePath = SceneManager.GetActiveScene().path;
@@ -71,7 +80,15 @@ public sealed class AutomatedPlaytester : MonoBehaviour
     {
         if (usesExitDoor && goalInitialized && SceneManager.GetActiveScene().path != startingScenePath)
         {
-            Finish(true, "Reached the exit door and left the level.", true);
+            string activeScene = SceneManager.GetActiveScene().name;
+            if (string.Equals(activeScene, expectedExitSceneName, StringComparison.Ordinal))
+            {
+                Finish(true, "Reached the exit door and left the level.", true);
+            }
+            else
+            {
+                Finish(false, $"Left the level through '{activeScene}' instead of the exit door destination '{expectedExitSceneName}'.", false);
+            }
             return;
         }
 
@@ -95,6 +112,24 @@ public sealed class AutomatedPlaytester : MonoBehaviour
         {
             lastHealth = health.CurrentHealth;
             lastRespawnCount = health.RespawnCount;
+            if (failOnRespawn && lastRespawnCount > 0)
+            {
+                Finish(false, "The safe-route regression playtest lost a life before reaching the exit.", false);
+                return;
+            }
+        }
+
+        if (!startSettled)
+        {
+            if (!hero.IsGrounded)
+            {
+                hero.SetAutomatedInput(0f, false);
+                return;
+            }
+
+            startSettled = true;
+            lastMovingPosition = hero.transform.position;
+            lastMovedAt = Time.unscaledTime;
         }
 
         if (hero.transform.position.y < FailureHeight)
@@ -108,7 +143,16 @@ public sealed class AutomatedPlaytester : MonoBehaviour
 
         if (usesExitDoor)
         {
+            if (!hero.IsGrounded)
+            {
+                airborneSinceLastWaypoint = true;
+            }
             AdvancePastReachedWaypoints();
+            if (passAfterWaypoints > 0 && waypointIndex >= passAfterWaypoints)
+            {
+                Finish(true, $"Reached {waypointIndex} regression waypoint(s) without losing a life.", false);
+                return;
+            }
             target = waypointIndex < waypoints.Count ? waypoints[waypointIndex].transform : exitDoor.transform;
             goalsRemaining = waypoints.Count - waypointIndex + 1;
         }
@@ -162,9 +206,21 @@ public sealed class AutomatedPlaytester : MonoBehaviour
             return;
         }
 
+        if (usesExitDoor && waypointIndex < waypoints.Count)
+        {
+            Vector2 landingOffset = waypoints[waypointIndex].transform.position - hero.transform.position;
+            if (Mathf.Abs(landingOffset.x) <= .65f && Mathf.Abs(landingOffset.y) <= .3f)
+            {
+                // Give a centered landing one quiet frame so physics can settle and the
+                // waypoint can be acknowledged before another automated jump begins.
+                hero.SetAutomatedInput(0f, false);
+                return;
+            }
+        }
+
         if (hero.IsGrounded && Time.unscaledTime >= nextJumpAt)
         {
-            jumpReleaseAt = Time.unscaledTime + 0.18f;
+            jumpReleaseAt = Time.unscaledTime + hero.JumpAnticipationSeconds + 0.20f;
             nextJumpAt = Time.unscaledTime + 0.45f;
             jumpAttempts++;
             if (jumpAttempts <= 5)
@@ -196,6 +252,7 @@ public sealed class AutomatedPlaytester : MonoBehaviour
 
         exitDoor = FindFirstObjectByType<LevelExitDoor>();
         usesExitDoor = exitDoor != null;
+        expectedExitSceneName = usesExitDoor ? exitDoor.DestinationScene : null;
         waypoints.Clear();
         waypoints.AddRange(FindObjectsByType<AutomatedPlaytestWaypoint>(FindObjectsSortMode.None)
             .OrderBy(waypoint => waypoint.Order));
@@ -230,14 +287,15 @@ public sealed class AutomatedPlaytester : MonoBehaviour
             // Reach the authored landing center before advancing. A broad tolerance let the
             // controller launch from ledge tips and collide with the side of the next platform.
             bool horizontallyAligned = Mathf.Abs(offset.x) <= .65f;
-            bool settled = body != null && Mathf.Abs(body.linearVelocity.y) <= 0.2f;
-            if (!verticallyAligned || !horizontallyAligned || !settled)
+            bool settled = body != null && Mathf.Abs(body.linearVelocity.y) <= .2f;
+            if (!airborneSinceLastWaypoint || !verticallyAligned || !horizontallyAligned || !settled)
             {
                 break;
             }
 
             Debug.Log($"AUTOMATED PLAYTEST: reached route waypoint {waypoints[waypointIndex].Order}.");
             waypointIndex++;
+            airborneSinceLastWaypoint = false;
             jumpReleaseAt = 0f;
             nextJumpAt = Time.unscaledTime;
             forcedJumpReleaseFrames = 1;
@@ -329,6 +387,12 @@ public sealed class AutomatedPlaytester : MonoBehaviour
     {
         string value = ReadArgument(name);
         return float.TryParse(value, out float parsed) && parsed > 0f ? parsed : fallback;
+    }
+
+    private static int ReadIntArgument(string name, int fallback)
+    {
+        string value = ReadArgument(name);
+        return int.TryParse(value, out int parsed) && parsed > 0 ? parsed : fallback;
     }
 
     [Serializable]

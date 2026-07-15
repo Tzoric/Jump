@@ -89,6 +89,12 @@ public static class GameProgress
         PlayerPrefs.Save();
     }
 
+    public static void RestartAfterGameOver()
+    {
+        PlayerPrefs.SetInt(LivesKey, StartingLives);
+        PlayerPrefs.Save();
+    }
+
     public static void CompleteLevel(int levelNumber)
     {
         if (levelNumber <= 0) return;

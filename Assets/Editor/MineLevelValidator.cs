@@ -10,6 +10,7 @@ using UnityEngine.SceneManagement;
 public static class MineLevelValidator
 {
     private const string Overview = "Assets/Scenes/DungeonOverview.unity";
+    private const string GameOver = "Assets/Scenes/GameOver.unity";
     private const string PlatformArt = "Assets/Art/Generated/MineRockBronzePlatform.png";
     private const string MinerArt = "Assets/Art/Generated/MinerCharacterV2.png";
     private const string MinerAnimationArt = "Assets/Art/Generated/MinerAnimationSheet.png";
@@ -62,6 +63,7 @@ public static class MineLevelValidator
         ValidatePlatformArtwork();
         ValidateAnimationArtwork();
         ValidateOverview();
+        ValidateGameOver();
 
         var routeLengths = new Dictionary<int, float>();
         foreach (LevelExpectation level in Levels)
@@ -73,7 +75,7 @@ public static class MineLevelValidator
         ValidateBuildSettings();
 
         EditorSceneManager.OpenScene(Overview, OpenSceneMode.Single);
-        Debug.Log("MINES VALIDATION PASSED: the camera-ready 11-node overview, alternating shafts, Level 2 retry ramp, bottomless horizontal pits, keys, chests, rare gems, economy, doors, thinner bronze-veined rock platforms, and miner presentation are ready.");
+        Debug.Log("MINES VALIDATION PASSED: overview, Game Over restart flow, eleven levels, route headroom, Level 2 recovery geometry, safe bottomless pits, progression, economy, and miner presentation are ready.");
     }
 
     private static void ValidateEconomyRules()
@@ -185,6 +187,34 @@ public static class MineLevelValidator
         }
     }
 
+    private static void ValidateGameOver()
+    {
+        OpenScene(GameOver);
+        Camera[] cameras = SceneComponents<Camera>();
+        Require(cameras.Length == 1, "Game Over scene must have exactly one rendering camera.");
+        Camera camera = cameras[0];
+        Require(camera.enabled && camera.gameObject.activeInHierarchy && camera.CompareTag("MainCamera"),
+            "Game Over camera is disabled or not tagged MainCamera.");
+        Require(camera.targetTexture == null && camera.targetDisplay == 0,
+            "Game Over camera must render to Display 1.");
+
+        GameOverController[] controllers = SceneComponents<GameOverController>();
+        Require(controllers.Length == 1, "Game Over scene needs exactly one GameOverController.");
+        Require(controllers[0].RestartScene == "DungeonOverview",
+            "Game Over Restart must return to DungeonOverview.");
+        Require(SceneComponents<Canvas>().Length >= 1,
+            "Game Over scene needs a visible UI canvas.");
+        UnityEngine.UI.Button[] restartButtons = SceneComponents<UnityEngine.UI.Button>().Where(button =>
+            button.name.IndexOf("restart", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
+        Require(restartButtons.Length == 1,
+            "Game Over scene needs exactly one visible Restart button.");
+        UnityEngine.UI.Button restart = restartButtons[0];
+        Require(restart.onClick.GetPersistentEventCount() == 1 &&
+                restart.onClick.GetPersistentTarget(0) == controllers[0] &&
+                restart.onClick.GetPersistentMethodName(0) == nameof(GameOverController.RestartGame),
+            "Game Over Restart button must have one persistent listener targeting GameOverController.RestartGame.");
+    }
+
     private static float ValidateLevel(LevelExpectation level)
     {
         OpenScene(level.Path);
@@ -216,10 +246,11 @@ public static class MineLevelValidator
         ValidateKeysAndChest(level);
         ValidateSpikes(level);
         ValidatePlatformMaterialsAndThickness(level);
+        ValidateOrdinaryHeadroom(level, hero);
 
         float routeLength = level.Number == 2
             ? ValidateLevel2Route(hero)
-            : ValidateDirection(level);
+            : ValidateDirection(level, hero);
 
         ValidateLevel11Treasure(level);
         return routeLength;
@@ -243,10 +274,13 @@ public static class MineLevelValidator
     {
         float speed = SerializedFloat(hero, "speed");
         float jumpForce = SerializedFloat(hero, "jumpForce");
+        float jumpAnticipation = SerializedFloat(hero, "jumpAnticipationSeconds");
         Require(Mathf.Abs(speed - 7.5f) <= .05f,
             $"{level.SceneName} hero speed must be the slowed 7.5 target (75% of the original speed)." );
         Require(jumpForce >= 11.5f && jumpForce <= 13f,
             $"{level.SceneName} jump should use the slightly higher, movement-matched 11.5-13 range.");
+        Require(jumpAnticipation >= .06f && jumpAnticipation <= .10f,
+            $"{level.SceneName} jump needs a visible 60-100ms grounded squat before takeoff.");
         Rigidbody2D body = hero.GetComponent<Rigidbody2D>();
         Require(body != null && body.gravityScale >= 5f && body.gravityScale <= 5.8f,
             $"{level.SceneName} hero gravity does not match the slower movement tuning.");
@@ -371,28 +405,129 @@ public static class MineLevelValidator
         }
     }
 
+    private static void ValidateOrdinaryHeadroom(LevelExpectation level, HeroMovement hero)
+    {
+        Collider2D heroCollider = hero.GetComponentsInChildren<Collider2D>(true)
+            .FirstOrDefault(collider => !collider.isTrigger);
+        Require(heroCollider != null, $"{level.SceneName} hero needs a solid standing collider for headroom validation.");
+        float requiredClearance = heroCollider.bounds.size.y + .75f;
+
+        int groundLayer = LayerMask.NameToLayer("Ground");
+        BoxCollider2D[] platforms = SceneComponents<BoxCollider2D>()
+            .Where(collider => !collider.isTrigger && collider.gameObject.layer == groundLayer &&
+                               collider.name.IndexOf("wall", StringComparison.OrdinalIgnoreCase) < 0 &&
+                               collider.name.IndexOf("boundary", StringComparison.OrdinalIgnoreCase) < 0)
+            .ToArray();
+
+        for (int firstIndex = 0; firstIndex < platforms.Length; firstIndex++)
+        for (int secondIndex = firstIndex + 1; secondIndex < platforms.Length; secondIndex++)
+        {
+            BoxCollider2D first = platforms[firstIndex];
+            BoxCollider2D second = platforms[secondIndex];
+            if (HasIntentionalHeadBumpExemption(first.transform) ||
+                HasIntentionalHeadBumpExemption(second.transform))
+            {
+                continue;
+            }
+
+            BoxCollider2D lower = first.bounds.center.y <= second.bounds.center.y ? first : second;
+            BoxCollider2D upper = lower == first ? second : first;
+            float horizontalOverlap = Mathf.Min(lower.bounds.max.x, upper.bounds.max.x) -
+                                      Mathf.Max(lower.bounds.min.x, upper.bounds.min.x);
+            if (horizontalOverlap <= .2f)
+            {
+                continue;
+            }
+
+            float centerDeltaX = Mathf.Abs(upper.bounds.center.x - lower.bounds.center.x);
+            float centerDeltaY = Mathf.Abs(upper.bounds.center.y - lower.bounds.center.y);
+            if (centerDeltaX >= centerDeltaY)
+            {
+                continue; // Laterally adjoining pieces are not an overhead stack.
+            }
+
+            float clearance = upper.bounds.min.y - lower.bounds.max.y;
+            Require(clearance + .01f >= requiredClearance,
+                $"{level.SceneName} ordinary platforms '{lower.name}' and '{upper.name}' provide only " +
+                $"{clearance:0.00} headroom; {requiredClearance:0.00} is required. " +
+                "A deliberate exception must be parented under an object named exactly 'Intentional Head-Bump Challenge'.");
+        }
+    }
+
+    private static bool HasIntentionalHeadBumpExemption(Transform transform)
+    {
+        for (Transform current = transform; current != null; current = current.parent)
+        {
+            if (string.Equals(current.name, "Intentional Head-Bump Challenge", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static float ValidateLevel2Route(HeroMovement hero)
     {
-        BoxCollider2D[] upperRoute = RoutePlatforms("upper");
-        BoxCollider2D[] upper = upperRoute.Where(platform =>
+        BoxCollider2D[] upper = RoutePlatforms("upper").Where(platform =>
             Mathf.Abs(SignedZ(platform.transform.eulerAngles.z)) <= 1f &&
-            platform.name.IndexOf("upper", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
+            platform.name.IndexOf("upper", StringComparison.OrdinalIgnoreCase) >= 0)
+            .OrderBy(platform => platform.bounds.center.x)
+            .ToArray();
         int groundLayer = LayerMask.NameToLayer("Ground");
         BoxCollider2D[] ramp = SceneComponents<BoxCollider2D>().Where(platform =>
             !platform.isTrigger && platform.gameObject.layer == groundLayer &&
-            Mathf.Abs(SignedZ(platform.transform.eulerAngles.z)) >= 8f &&
-            platform.name.IndexOf("ramp", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
-        Require(upper.Length >= 5, "Level 2 needs at least five flat upper horizontal platforms.");
-        Require(CountHorizontalGaps(upper) >= 4, "Level 2 upper platforms need real jump gaps between them.");
-        Require(ramp.Length >= 1, "Level 2 needs a steep lower sliding ramp.");
+            platform.name.IndexOf("ramp", StringComparison.OrdinalIgnoreCase) >= 0)
+            .OrderBy(platform => platform.bounds.center.x)
+            .ToArray();
+
+        Require(upper.Length >= 6, "Level 2 needs at least six individually horizontal upper platforms.");
+        Require(upper.Zip(upper.Skip(1), (left, right) => right.bounds.center.y > left.bounds.center.y + .2f).All(value => value),
+            "Level 2 upper platform centers must consistently rise while moving right.");
+        float upperTrend = Mathf.Atan2(
+            upper[^1].bounds.center.y - upper[0].bounds.center.y,
+            upper[^1].bounds.center.x - upper[0].bounds.center.x) * Mathf.Rad2Deg;
+        Require(upperTrend >= 12f && upperTrend <= 28f,
+            $"Level 2 upper route must form a readable diagonal ascent; measured trend is {upperTrend:0.0} degrees.");
+        Require(ApproximateDistinctCount(upper.Select(platform => platform.bounds.size.x), .35f) >= 3,
+            "Level 2 needs at least three materially distinct upper-platform widths.");
+
+        float[] horizontalGaps = ConsecutiveHorizontalGaps(upper);
+        float[] verticalSteps = upper.Zip(upper.Skip(1),
+            (left, right) => right.bounds.center.y - left.bounds.center.y).ToArray();
+        Require(horizontalGaps.Length == upper.Length - 1 && horizontalGaps.All(gap => gap >= .75f),
+            "Every Level 2 upper jump needs a meaningful visible horizontal gap of at least 0.75 world units.");
+        Require(ApproximateDistinctCount(horizontalGaps, .2f) >= 2 &&
+                ApproximateDistinctCount(verticalSteps, .2f) >= 2,
+            "Level 2 consecutive jumps must vary in both horizontal and vertical distance.");
+
+        Require(ramp.Length >= 4, "Level 2 needs a continuous multi-piece lower sliding ramp.");
+        Require(ramp.All(platform => Mathf.Abs(SignedZ(platform.transform.eulerAngles.z) - 18f) <= 1f),
+            "Every Level 2 recovery-ramp segment must rise right at +18 degrees.");
+        Require(ramp.Zip(ramp.Skip(1), (left, right) => right.bounds.center.y > left.bounds.center.y).All(value => value),
+            "Level 2 recovery ramp must rise toward the right, leaving its downhill end at bottom-left.");
         Require(ramp.All(platform => platform.sharedMaterial != null && platform.sharedMaterial.friction <= .05f),
             "Level 2 lower ramp must use a low-friction material so falls reliably slide to the bottom.");
-        Require(ramp.Average(platform => platform.bounds.center.y) < upper.Average(platform => platform.bounds.center.y),
-            "Level 2 sliding ramp must sit below the upper platform route.");
-        Require(SceneComponents<DamageZone>().Count(zone =>
-                    zone.name.IndexOf("spike", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                    zone.transform.position.y < upper.Average(platform => platform.bounds.center.y)) >= 3,
-            "Level 2 lower ramp needs several one-heart spikes.");
+        Require(Mathf.Abs(upperTrend - 18f) <= 5f,
+            "Level 2 upper ascent and +18-degree recovery ramp must read as approximately parallel.");
+        Require(upper.All(platform =>
+        {
+            BoxCollider2D nearestRamp = ramp.OrderBy(segment =>
+                Mathf.Abs(segment.bounds.center.x - platform.bounds.center.x)).First();
+            return nearestRamp.bounds.max.y + .5f < platform.bounds.min.y;
+        }), "Level 2 recovery ramp must remain clearly below the upper gap route.");
+
+        Transform rampRoot = ramp[0].transform.parent;
+        DamageZone[] rampSpikes = SceneComponents<DamageZone>().Where(zone =>
+            zone.name.IndexOf("spike", StringComparison.OrdinalIgnoreCase) >= 0 &&
+            rampRoot != null && zone.transform.IsChildOf(rampRoot)).ToArray();
+        Require(rampSpikes.Length >= 3, "Level 2 lower ramp needs several one-heart spikes.");
+        Require(rampSpikes.All(spike => Mathf.Abs(SignedZ(spike.transform.eulerAngles.z)) <= 5f),
+            "Level 2 ramp spikes must point within five degrees of world up, not inherit ramp rotation.");
+        Require(rampSpikes.All(spike => ramp.Any(segment =>
+                Mathf.Sqrt(segment.bounds.SqrDistance(spike.transform.position)) <= .8f)),
+            "Every Level 2 spike must be visibly seated on the recovery ramp.");
+
         Component[] retryZones = SceneComponents<Component>()
             .Where(component => component.GetType().Name == "LevelRetryZone").ToArray();
         Require(retryZones.Length == 1,
@@ -400,8 +535,11 @@ public static class MineLevelValidator
         Collider2D retryTrigger = retryZones[0].GetComponent<Collider2D>();
         Require(retryTrigger != null && retryTrigger.isTrigger && retryZones[0].GetComponent<DamageZone>() == null,
             "Level 2 retry must be a non-damaging trigger rather than a life-costing pit.");
-        Require(Vector3.Distance(SerializedVector3(retryZones[0], "resetPosition"), hero.transform.position) <= .1f,
+        Require(Vector3.Distance(SerializedPosition(retryZones[0], "resetPosition"), hero.transform.position) <= .1f,
             "Level 2 retry zone must send the miner back to the route's starting position.");
+        Require(retryTrigger.bounds.center.x < ramp.Min(segment => segment.bounds.center.x) &&
+                retryTrigger.bounds.center.y < ramp.Min(segment => segment.bounds.center.y),
+            "Level 2 retry trigger must sit at the ramp's downhill bottom-left end.");
         Require(!SceneTransforms().Any(transform => transform.name.IndexOf("Bottomless Pit", StringComparison.OrdinalIgnoreCase) >= 0),
             "Level 2 gaps must drop onto the retry ramp, not into bottomless pits.");
 
@@ -412,7 +550,7 @@ public static class MineLevelValidator
         return Range(upper.Select(platform => platform.bounds.center.x));
     }
 
-    private static float ValidateDirection(LevelExpectation level)
+    private static float ValidateDirection(LevelExpectation level, HeroMovement hero)
     {
         switch (level.Direction)
         {
@@ -451,18 +589,106 @@ public static class MineLevelValidator
                     $"{level.SceneName} horizontal route is too short.");
                 Require(route.All(platform => Mathf.Abs(SignedZ(platform.transform.eulerAngles.z)) <= 1f),
                     $"{level.SceneName} horizontal route contains tilted main platforms.");
-                DamageZone[] pits = SceneComponents<DamageZone>().Where(zone =>
-                    zone.name.IndexOf("bottomless", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
-                Require(pits.Length >= level.MinimumWaypoints,
-                    $"{level.SceneName} must place a lethal bottomless pit beneath every main gap.");
-                Require(pits.All(pit => SerializedInt(pit, "damage") >= GameProgress.BaseHearts),
-                    $"{level.SceneName} bottomless pits must be fatal, not one-heart hazards.");
-                Require(CountHorizontalGaps(route) >= level.MinimumWaypoints - 1,
-                    $"{level.SceneName} needs separated horizontal platforms over its pits.");
+                ValidateHorizontalPits(level, hero, route);
                 return Range(route.Select(platform => platform.bounds.center.x));
             }
             default:
                 throw new ArgumentOutOfRangeException();
+        }
+    }
+
+    private static void ValidateHorizontalPits(
+        LevelExpectation level, HeroMovement hero, IEnumerable<BoxCollider2D> routePlatforms)
+    {
+        BoxCollider2D[] route = routePlatforms.OrderBy(platform => platform.bounds.center.x).ToArray();
+        Collider2D heroCollider = hero.GetComponentsInChildren<Collider2D>(true)
+            .FirstOrDefault(collider => !collider.isTrigger);
+        Require(heroCollider != null, $"{level.SceneName} hero needs a collider for pit-clearance validation.");
+
+        DamageZone[] fatalZones = SceneComponents<DamageZone>().Where(zone =>
+            zone.name.IndexOf("bottomless", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
+        Require(fatalZones.Length > 0, $"{level.SceneName} needs lethal bottomless-pit coverage.");
+        Require(fatalZones.All(zone => SerializedInt(zone, "damage") >= GameProgress.BaseHearts),
+            $"{level.SceneName} bottomless zones must be fatal, not one-heart hazards.");
+        Collider2D[] fatalTriggers = fatalZones.Select(zone => zone.GetComponent<Collider2D>()).ToArray();
+        Require(fatalTriggers.All(trigger => trigger != null && trigger.isTrigger),
+            $"{level.SceneName} every bottomless DamageZone needs a trigger collider.");
+
+        float minimumGap = Mathf.Max(.75f, heroCollider.bounds.size.x * .9f);
+        float[] gapWidths = ConsecutiveHorizontalGaps(route);
+        Require(gapWidths.Length == route.Length - 1 && gapWidths.All(width => width >= minimumGap),
+            $"{level.SceneName} needs meaningful visible gaps at least {minimumGap:0.00} units wide; " +
+            $"smallest is {(gapWidths.Length == 0 ? 0f : gapWidths.Min()):0.00}.");
+
+        float safeDeathCeiling = route.Min(platform => platform.bounds.min.y) - .5f;
+        foreach (Collider2D fatal in fatalTriggers)
+        {
+            Require(fatal.bounds.max.y <= safeDeathCeiling + .01f,
+                $"{level.SceneName} fatal trigger '{fatal.name}' reaches y={fatal.bounds.max.y:0.00}; " +
+                $"it must remain at or below the safe ceiling y={safeDeathCeiling:0.00}.");
+            Require(route.All(platform => !Intersects2D(fatal.bounds, platform.bounds)),
+                $"{level.SceneName} fatal trigger '{fatal.name}' overlaps a visible route platform.");
+            Require(!Intersects2D(fatal.bounds, heroCollider.bounds),
+                $"{level.SceneName} fatal trigger '{fatal.name}' overlaps the hero spawn collider.");
+        }
+
+        float heroHalfWidth = heroCollider.bounds.extents.x;
+        float heroHeight = heroCollider.bounds.size.y;
+        foreach (BoxCollider2D platform in route)
+        {
+            Bounds standingEnvelope = BoundsFromEdges(
+                platform.bounds.min.x - heroHalfWidth - .1f,
+                platform.bounds.max.x + heroHalfWidth + .1f,
+                platform.bounds.min.y - .25f,
+                platform.bounds.max.y + heroHeight + .75f);
+            Require(fatalTriggers.All(fatal => !Intersects2D(fatal.bounds, standingEnvelope)),
+                $"{level.SceneName} has a fatal trigger inside the required landing/standing envelope of '{platform.name}'.");
+        }
+
+        AutomatedPlaytestWaypoint[] waypoints = SceneComponents<AutomatedPlaytestWaypoint>();
+        foreach (AutomatedPlaytestWaypoint waypoint in waypoints)
+        {
+            Bounds waypointEnvelope = BoundsFromEdges(
+                waypoint.transform.position.x - heroHalfWidth,
+                waypoint.transform.position.x + heroHalfWidth,
+                waypoint.transform.position.y - heroHeight * .5f,
+                waypoint.transform.position.y + heroHeight * .5f);
+            Require(fatalTriggers.All(fatal => !Intersects2D(fatal.bounds, waypointEnvelope)),
+                $"{level.SceneName} fatal geometry overlaps required waypoint {waypoint.Order}.");
+        }
+
+        Collider2D[] localized = fatalTriggers.Where(trigger =>
+            trigger.name.StartsWith("Bottomless Pit", StringComparison.OrdinalIgnoreCase)).ToArray();
+        for (int index = 0; index < localized.Length; index++)
+        {
+            Collider2D pit = localized[index];
+            int matchingGap = FindContainingGap(route, pit.bounds.center.x);
+            Require(matchingGap >= 0,
+                $"{level.SceneName} localized trigger '{pit.name}' is not centered beneath a visible gap.");
+            float gapLeft = route[matchingGap].bounds.max.x;
+            float gapRight = route[matchingGap + 1].bounds.min.x;
+            Require(pit.bounds.min.x >= gapLeft - .01f && pit.bounds.max.x <= gapRight + .01f,
+                $"{level.SceneName} localized trigger '{pit.name}' extends outside its visible gap " +
+                $"[{gapLeft:0.00}, {gapRight:0.00}].");
+        }
+
+        Collider2D[] preferredCoverage = localized.Length > 0 ? localized : fatalTriggers;
+        for (int index = 0; index < route.Length - 1; index++)
+        {
+            float gapLeft = route[index].bounds.max.x;
+            float gapRight = route[index + 1].bounds.min.x;
+            float midpoint = (gapLeft + gapRight) * .5f;
+            Require(preferredCoverage.Any(trigger =>
+                    trigger.bounds.min.x <= midpoint && trigger.bounds.max.x >= midpoint &&
+                    trigger.bounds.max.y <= safeDeathCeiling + .01f),
+                $"{level.SceneName} visible gap {index + 1} has no safely placed lethal coverage.");
+
+            float corridorBottom = Mathf.Min(route[index].bounds.min.y, route[index + 1].bounds.min.y) - .25f;
+            float corridorTop = Mathf.Max(route[index].bounds.max.y, route[index + 1].bounds.max.y) + heroHeight + .75f;
+            Bounds jumpCorridor = BoundsFromEdges(
+                gapLeft - heroHalfWidth, gapRight + heroHalfWidth, corridorBottom, corridorTop);
+            Require(fatalTriggers.All(trigger => !Intersects2D(trigger.bounds, jumpCorridor)),
+                $"{level.SceneName} fatal geometry intrudes into the normal jump corridor for gap {index + 1}.");
         }
     }
 
@@ -502,10 +728,10 @@ public static class MineLevelValidator
 
     private static void ValidateBuildSettings()
     {
-        string[] expected = new[] { Overview }.Concat(Levels.Select(level => level.Path)).ToArray();
+        string[] expected = new[] { Overview, GameOver }.Concat(Levels.Select(level => level.Path)).ToArray();
         string[] actual = EditorBuildSettings.scenes.Where(scene => scene.enabled).Select(scene => scene.path).ToArray();
         Require(actual.SequenceEqual(expected),
-            "Build Settings must contain the overview followed by Bronze Mines Levels 1-11 in order.");
+            "Build Settings must contain DungeonOverview, GameOver, then Bronze Mines Levels 1-11 in order.");
     }
 
     private static BoxCollider2D[] RoutePlatforms(string routeNameFragment)
@@ -519,19 +745,58 @@ public static class MineLevelValidator
             .Where(collider => !collider.isTrigger && collider.gameObject.layer == groundLayer).ToArray();
     }
 
-    private static int CountHorizontalGaps(IEnumerable<BoxCollider2D> colliders)
+    private static float[] ConsecutiveHorizontalGaps(IEnumerable<BoxCollider2D> colliders)
     {
         BoxCollider2D[] ordered = colliders.OrderBy(collider => collider.bounds.min.x).ToArray();
-        int gaps = 0;
+        var gaps = new List<float>();
         for (int index = 1; index < ordered.Length; index++)
         {
-            if (ordered[index].bounds.min.x - ordered[index - 1].bounds.max.x >= .35f)
+            gaps.Add(ordered[index].bounds.min.x - ordered[index - 1].bounds.max.x);
+        }
+
+        return gaps.ToArray();
+    }
+
+    private static int ApproximateDistinctCount(IEnumerable<float> values, float tolerance)
+    {
+        var representatives = new List<float>();
+        foreach (float value in values.OrderBy(value => value))
+        {
+            if (representatives.All(existing => Mathf.Abs(existing - value) >= tolerance))
             {
-                gaps++;
+                representatives.Add(value);
             }
         }
 
-        return gaps;
+        return representatives.Count;
+    }
+
+    private static int FindContainingGap(IReadOnlyList<BoxCollider2D> orderedPlatforms, float x)
+    {
+        for (int index = 0; index < orderedPlatforms.Count - 1; index++)
+        {
+            if (x >= orderedPlatforms[index].bounds.max.x &&
+                x <= orderedPlatforms[index + 1].bounds.min.x)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private static Bounds BoundsFromEdges(float minX, float maxX, float minY, float maxY)
+    {
+        return new Bounds(
+            new Vector3((minX + maxX) * .5f, (minY + maxY) * .5f, 0f),
+            new Vector3(Mathf.Max(0f, maxX - minX), Mathf.Max(0f, maxY - minY), 1f));
+    }
+
+    private static bool Intersects2D(Bounds first, Bounds second)
+    {
+        const float epsilon = .001f;
+        return first.min.x < second.max.x - epsilon && first.max.x > second.min.x + epsilon &&
+               first.min.y < second.max.y - epsilon && first.max.y > second.min.y + epsilon;
     }
 
     private static T[] SceneComponents<T>() where T : Component
@@ -566,12 +831,16 @@ public static class MineLevelValidator
         return property.intValue;
     }
 
-    private static Vector3 SerializedVector3(UnityEngine.Object target, string propertyName)
+    private static Vector3 SerializedPosition(UnityEngine.Object target, string propertyName)
     {
         SerializedProperty property = new SerializedObject(target).FindProperty(propertyName);
-        Require(property != null && property.propertyType == SerializedPropertyType.Vector3,
+        Require(property != null &&
+                (property.propertyType == SerializedPropertyType.Vector2 ||
+                 property.propertyType == SerializedPropertyType.Vector3),
             $"{target.GetType().Name}.{propertyName} is missing from its serialized contract.");
-        return property.vector3Value;
+        return property.propertyType == SerializedPropertyType.Vector2
+            ? (Vector3)property.vector2Value
+            : property.vector3Value;
     }
 
     private static float Range(IEnumerable<float> values)

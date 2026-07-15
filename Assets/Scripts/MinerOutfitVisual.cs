@@ -35,6 +35,8 @@ public sealed class MinerOutfitVisual : MonoBehaviour
     public Transform HandPickaxe => handPickaxe;
     public CharacterOutfitDefinition Outfit => outfit;
     public Perspective CurrentPerspective => perspectiveOverride ? forcedPerspective : Perspective.Side;
+    public int CurrentAnimationRow { get; private set; } = -1;
+    public int CurrentAnimationFrame { get; private set; } = -1;
 
     public void Configure(SpriteRenderer facingSource, SpriteRenderer bodyRenderer, Transform pickaxeTransform,
         CharacterOutfitDefinition outfitDefinition)
@@ -120,9 +122,14 @@ public sealed class MinerOutfitVisual : MonoBehaviour
             if (pickRenderer != null) pickRenderer.enabled = showSideTool;
             if (!showSideTool) return;
 
-            float swing = horizontalSpeed > .15f ? Mathf.Sin(walkCycle) * 12f : -8f;
+            bool preparingJump = movement != null && movement.IsPreparingJump;
+            bool airbornePose = movement != null &&
+                (!movement.IsGrounded || (physicsBody != null && physicsBody.linearVelocityY > .5f));
+            float swing = preparingJump ? -24f : airbornePose ? -4f :
+                horizontalSpeed > .15f ? Mathf.Sin(walkCycle) * 12f : -8f;
+            float pickVerticalOffset = preparingJump ? -.045f : airbornePose ? .015f : bob;
             handPickaxe.localPosition = new Vector3(Mathf.Abs(pickRestPosition.x) * direction,
-                pickRestPosition.y + bob, pickRestPosition.z);
+                pickRestPosition.y + pickVerticalOffset, pickRestPosition.z);
             handPickaxe.localRotation = Quaternion.Euler(0f, 0f, swing * direction);
             handPickaxe.localScale = new Vector3(direction, 1f, 1f);
         }
@@ -147,16 +154,25 @@ public sealed class MinerOutfitVisual : MonoBehaviour
         else
         {
             bool grounded = movement != null && movement.IsGrounded;
-            bool airborne = !grounded;
-            if (wasAirborne && grounded) landingUntil = Time.time + .12f;
+            bool preparingJump = movement != null && movement.IsPreparingJump;
+            float velocityY = physicsBody == null ? 0f : physicsBody.linearVelocityY;
+            bool launching = velocityY > .5f && !preparingJump;
+            bool airborne = !grounded || launching;
+            if (wasAirborne && grounded && !launching) landingUntil = Time.time + .12f;
             wasAirborne = airborne;
+            bool landing = !airborne && Time.time < landingUntil;
 
-            if (airborne || Time.time < landingUntil)
+            if (preparingJump)
             {
                 row = 2;
-                float velocityY = physicsBody == null ? 0f : physicsBody.linearVelocityY;
-                frame = Time.time < landingUntil ? 5 :
-                    velocityY > 7f ? 1 : velocityY > 1f ? 2 : velocityY > -.75f ? 3 : 4;
+                frame = 1;
+                fps = walkFramesPerSecond;
+                state = 90;
+            }
+            else if (airborne || landing)
+            {
+                row = 2;
+                frame = landing ? 5 : velocityY > 1f ? 2 : velocityY > -.75f ? 3 : 4;
                 fps = walkFramesPerSecond;
                 state = 100 + frame;
             }
@@ -182,6 +198,9 @@ public sealed class MinerOutfitVisual : MonoBehaviour
                 state = 0;
             }
         }
+
+        CurrentAnimationRow = row;
+        CurrentAnimationFrame = frame;
 
         if (state != lastAnimationState)
         {

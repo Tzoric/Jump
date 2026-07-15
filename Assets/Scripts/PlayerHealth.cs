@@ -160,7 +160,7 @@ public sealed class PlayerHealth : MonoBehaviour
 
         if (!hasAnotherLife)
         {
-            UnityEngine.SceneManagement.SceneManager.LoadScene("DungeonOverview");
+            UnityEngine.SceneManagement.SceneManager.LoadScene("GameOver");
             yield break;
         }
 

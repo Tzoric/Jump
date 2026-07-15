@@ -3,8 +3,8 @@
 ## Game Design Document
 
 **Status:** First dungeon production design
-**Version:** 0.4a
-**Last updated:** July 14, 2026
+**Version:** 0.4c
+**Last updated:** July 15, 2026
 **Working title:** Jump
 
 This document is the current design authority for the playable Bronze Mines chapter. Later-dungeon ideas remain provisional unless they are explicitly marked confirmed.
@@ -54,7 +54,7 @@ Normal levels unlock sequentially. Level 11 requires both completion of Level 10
 | Action | Input | Notes |
 |---|---|---|
 | Move | Arrow keys or `A` / `D` | Base horizontal speed is 7.5 units per second. |
-| Jump | Current project jump input | Jump force is 12 with a 0.24-second held-jump window. |
+| Jump | Current project jump input | A grounded press shows an approximately 0.08-second squat before the force-12 impulse; holding after takeoff extends height for up to 0.24 seconds. |
 | Use health potion | `H` | Consumes one potion and restores one heart. |
 | Open inventory | `E` | Reserved for the broader inventory interface. |
 
@@ -75,8 +75,8 @@ Normal levels unlock sequentially. Level 11 requires both completion of Level 10
 - The same recognizable hero identity, face, body proportions, and animation timing persist throughout the game.
 - Dungeon themes change a swappable outfit profile rather than replacing the hero. Initial profiles include the Bronze Miner, a construction worker, and an astronaut.
 - Each outfit supplies compatible directional sprite sets while preserving the same silhouette, attachment points, collider assumptions, and gameplay scale.
-- Hand-held tools may use separate hand-rigged visuals so a pickaxe or later tool can follow the hand without being baked into every body frame.
-- The required animation set is side walk, side run, side jump/rise, apex, fall, land, front-facing walk toward the camera, and back-facing walk away from the camera.
+- Hand-held tools may use separate hand-rigged visuals so a pickaxe or later tool can follow the hand without being baked into every body frame. The tool follows the authored hand position through the squat, rise, apex, fall, and landing poses.
+- The required animation set is side walk, side run, side jump/rise, apex, fall, land, front-facing walk toward the camera, and back-facing walk away from the camera. The current sheet's zero-based row 2 is fixed as frame 0 idle, frame 1 grounded squat, frame 2 rise, frame 3 apex, frame 4 fall, and frame 5 land.
 - Side animations mirror for left and right unless an outfit or tool requires dedicated directional art.
 - Door-entry transitions use the back-facing walk-away animation so the hero visibly walks into the doorway. Front-facing walking supports entrances, reveals, and movement toward the camera.
 
@@ -85,7 +85,9 @@ Normal levels unlock sequentially. Level 11 requires both completion of Level 10
 - Base side movement is 7.5 units per second, 75% of the original speed. A future speed power-up may restore or exceed the old speed.
 - Gravity scale is 5.4, approximately 60% of the former value, so ascent and falling are readable beside the slower horizontal movement.
 - Jump force is 12. This is slightly higher than the first slowed-jump pass while remaining proportionate to the 7.5 side speed.
-- The held-jump window is 0.24 seconds.
+- A valid grounded jump press first commits to an approximately 0.08-second anticipation squat; the upward impulse occurs only after that readable pose has appeared.
+- Releasing the button during anticipation does not cancel the committed jump. A quick tap still receives the initial impulse, while continued input after takeoff controls the additional height through the 0.24-second held-jump window.
+- The visual sequence transitions directly from grounded squat to rise. The standing pose must not flash after the press, and the squat must not appear for the first time after the miner is airborne.
 - Movement values must be playtested against every required route; normal completion must never require a speed power-up.
 
 ---
@@ -96,7 +98,9 @@ Normal levels unlock sequentially. Level 11 requires both completion of Level 10
 - A spike hit removes exactly one heart and grants brief damage invulnerability.
 - A health potion restores exactly one missing heart and cannot exceed the current maximum.
 - A new save begins with three lives. A life represents one complete attempt, so the starting balance provides three attempts rather than three respawns after the first attempt.
-- Reaching zero hearts consumes one life. If another life remains, restart the level from its beginning; otherwise return to the overview.
+- Reaching zero hearts consumes one life. If another life remains, restart the level from its beginning.
+- When the life balance reaches zero, open the dedicated Game Over screen instead of loading the overview. The screen must keep the failed state visible and offer a clear **Restart** button.
+- Restart begins a new three-life run and then returns to the Bronze Mines overview. Saved progression, collected keys, opened chests, currency, potions, and purchased upgrades remain intact.
 - Falling into a bottomless pit is lethal, consumes the current attempt, and follows the normal life/respawn flow.
 - Level 2's reset ramp is not a bottomless pit. Falling from its upper route makes the player slide back to the ramp's bottom and restart the traversal without spending a life unless spikes reduce health to zero.
 
@@ -117,6 +121,10 @@ Normal levels unlock sequentially. Level 11 requires both completion of Level 10
 - Bronze veins run through and between the rocks. They should read as mineral veins, not as a flat rectangular bronze frame.
 - Rock faces need enough highlights, shadows, and chipped edges to match the surrounding environment.
 - Platforms remain thinner vertically than the first prototype while preserving clear collision and safe footing.
+- Across every level, ordinary stacked platforms need generous vertical headroom. Where their usable horizontal spans overlap, the default clear distance from the lower platform top to the upper platform underside is at least the standing hero collider height plus 0.75 world units.
+- Apply the headroom rule to main routes and optional key, chest, and gem routes. A platform underside must not unexpectedly block the intended jump arc.
+- Vertical shafts also stagger consecutive ledges laterally, and place each supported exit outward beside the final ledge so its foundation never blocks the last climbing jump.
+- An intentionally tight head-bump challenge may use less clearance only when it is explicitly identified in that level's brief and authored object name. It must be visually readable, independently playtested, and unable to trap or invisibly damage the player.
 - Later dungeons replace the vein material to match their identity; Dungeon 2 uses silver.
 
 ### Background and camera
@@ -124,7 +132,7 @@ Normal levels unlock sequentially. Level 11 requires both completion of Level 10
 - The world overview always contains an active rendering camera; it must never display a `No cameras rendering` message.
 - The level camera follows the miner and frames upcoming landings and hazards.
 - Background composition and support art follow each tunnel's direction: vertical shafts emphasize height, angled shafts rise diagonally, and horizontal tunnels emphasize lateral depth.
-- Level 2's background is angled to support its rising ramp composition even though its main upper platforms are horizontal.
+- Level 2's background is angled to support the diagonally rising route; each upper platform surface remains horizontal even though the sequence climbs.
 
 ### Difficulty and fairness
 
@@ -139,12 +147,12 @@ Normal levels unlock sequentially. Level 11 requires both completion of Level 10
 
 Dungeon 1 is the **Bronze Mines** and contains eleven levels, one for each tunnel shown on its world overview. All eleven shafts are level-select nodes rather than decorative `coming soon` entrances.
 
-The principal tunnel direction alternates vertical, angled, and horizontal. Level 2 is classified as the angled entry in the cycle because of its reset ramp and angled composition, while its required upper route is built from horizontal platforms.
+The principal tunnel direction alternates vertical, angled, and horizontal. Level 2 is classified as the angled entry in the cycle because its horizontal-surfaced platforms form a diagonally rising path with a parallel reset ramp.
 
 | Level | Working name | Direction | Primary challenge |
 |---:|---|---|---|
 | 1 | Bronze Shaft | Vertical | Short tutorial climb, basic movement, camera tracking, and supported door entry. |
-| 2 | Sliding Ascent | Angled hybrid | Horizontal upper platforms separated by gaps over a steep spike-covered reset ramp. |
+| 2 | Sliding Ascent | Angled hybrid | Varied horizontal-surfaced platforms rise diagonally over a parallel spike-covered reset ramp. |
 | 3 | Chasm Run | Horizontal | A longer lateral route that introduces bottomless gaps. |
 | 4 | Copper Column | Vertical | A taller climb with less generous spacing and more hazards. |
 | 5 | Crooked Incline | Angled | A longer diagonal ascent with increasingly demanding recovery. |
@@ -172,18 +180,19 @@ The principal tunnel direction alternates vertical, angled, and horizontal. Leve
 
 ### Level 2 - Sliding Ascent
 
-- The required route moves laterally across thin, flat, horizontal platforms separated by clear gaps.
-- A continuous 18-degree downward ramp runs underneath the upper route and slopes back toward the level start/bottom.
+- Each required upper platform has a flat horizontal surface, but the sequence rises diagonally toward the exit.
+- Platform widths vary, and successive jumps vary both their horizontal distance and vertical rise. The route must not read as equal-width ledges placed along one uniform step pattern.
+- A continuous 18-degree ramp runs underneath and parallel to the overall rising path. Its downhill direction leads to the retry bottom/start.
 - The ramp uses a dedicated zero- or near-zero-friction 2D physics material. The miner must not be able to perch on it and must slide reliably to the retry bottom when movement input is released.
 - Falling through an upper gap lands the miner on the ramp. Gravity carries the miner to the bottom, forcing the upper-platform route to be attempted again.
-- Spike groups project from the ramp. The miner must jump while sliding to avoid them; every hit costs one heart.
+- Spike groups sit on the ramp with their tips pointing upward in world space rather than rotating sideways with the slope. The miner must jump while sliding to avoid them; every hit costs one heart.
 - The ramp is a recoverable reset route, not a bottomless death zone.
 - Green crystals introduce collection and the overview shop.
 - The cave background, rails, and visual flow are angled to match the ramp.
 
 ### Horizontal tunnel rule
 
-Levels 3, 6, and 9 contain bottomless pits beneath separated horizontal platforms. Pit edges must be visually obvious, camera framing must reveal the intended landing, and the required jump distances must fit default movement.
+Levels 3, 6, and 9 contain bottomless pits beneath separated horizontal platforms. Pit edges must be visually obvious, camera framing must reveal the intended landing, and the required jump distances must fit default movement. In Level 3 specifically, lethal triggers exist only inside and below visible gaps: standing, landing, or jumping on the authored route must never cause an invisible death.
 
 ### Level 10 silver-key secret
 
@@ -287,21 +296,30 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 - All eleven exits have foundations and use the visible door-entry transition.
 - All eleven levels contain one bronze key and one persisted chest.
 - Horizontal levels contain lethal bottomless pit zones.
-- Level 2's ramp returns a fallen player toward the start and its spikes deal one heart.
+- Ordinary stacked platforms satisfy the collider-based headroom rule; every smaller clearance is an explicitly named head-bump challenge.
+- Level 2's varied upper platforms rise diagonally, its ramp remains parallel beneath them, and its upward-facing spikes deal one heart.
+- Level 3 has no lethal trigger intersecting a platform, spawn, required landing, or normal jump corridor.
 - Level 11 contains exactly five blue crystals and one purple crystal, with values 5 and 20.
 - A new save has five hearts per level and three total attempts.
+- Spending the final life loads the Game Over screen; only its Restart action begins a new three-life run and returns to the overview.
 - Shop prices and potion healing match this document.
 - The default miner can complete every required route without a purchase or power-up.
+- A grounded jump holds row-2 frame 1 for approximately 0.08 seconds before upward velocity begins, then advances directly to frame 2; a quick tap still launches and a held input produces the expected higher arc.
 
 ### Human playtest focus
 
 - Confirm that the slower side speed and higher jump feel controlled rather than sluggish.
+- Confirm the brief squat is readable without making jump input feel delayed, no standing frame flashes between squat and rise, and the squat never appears after takeoff.
 - Confirm that the thin platforms remain readable and their collision matches their artwork.
-- Verify the pick stays attached to the moving hand in both facing directions.
+- Confirm ordinary jumps have noticeably more overhead clearance, while every deliberate head-bump challenge is clearly telegraphed and documented.
+- Verify the pick stays attached to the moving hand in both facing directions and follows the hand through squat, rise, apex, fall, and landing.
 - Verify every outfit preserves the hero's recognizable face, scale, collider alignment, and full directional animation contract.
 - Verify door entry selects the back-facing walk-away animation rather than mirroring a side-walk cycle.
 - Verify that Level 2 falls naturally land on the ramp and cannot bypass the intended restart.
+- Verify Level 2 platform widths and both axes of jump spacing vary while the path still reads as a diagonal ascent; confirm every ramp spike points upward.
+- Traverse Level 3 from spawn to exit and land near both edges of every platform to prove no invisible death trigger overlaps the playable route.
 - Verify that bottomless pit deaths are clear and never resemble recoverable Level 2 falls.
+- Spend the final life, verify that no overview load occurs before Game Over is displayed, then verify Restart restores three lives without deleting persistent progress.
 - Measure whether later levels are difficult because of mastery rather than excessive repetition.
 
 ---
@@ -324,6 +342,7 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 - **Final challenge:**
 - **Supported exit location:**
 - **Camera and background direction:**
+- **Ordinary minimum headroom and any explicitly named head-bump exception:**
 
 ### Hazards and rewards
 
@@ -337,6 +356,7 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 
 - [ ] Default movement can complete the required route.
 - [ ] Required jumps have an appropriate margin for the target difficulty.
+- [ ] Ordinary stacked platforms provide the required hero-collider headroom; any tighter head-bump challenge is explicitly named and documented.
 - [ ] Hazards are visible before they can cause unavoidable damage.
 - [ ] The player cannot become permanently trapped.
 - [ ] Horizontal pits are unmistakably lethal; recoverable ramps are unmistakably recoverable.
@@ -373,6 +393,8 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 
 | Version | Date | Change |
 |---|---|---|
+| 0.4c | July 15, 2026 | Defined the grounded jump-anticipation squat, committed quick-tap behavior, row-2 idle/squat/rise/apex/fall/land order, hand-tool pose tracking, and automated transition checks. |
+| 0.4b | July 15, 2026 | Increased default platform headroom with explicit-only head-bump exceptions, changed Level 2 to a varied diagonally rising upper route over a parallel ramp with upward-facing spikes, added the Level 3 invisible-death regression contract, and routed zero lives through a Restart-capable Game Over screen. |
 | 0.4a | July 14, 2026 | Defined a persistent hero identity, swappable dungeon outfit profiles, hand-rigged tools, and the complete side/front/back animation contract used by gameplay and door entry. |
 | 0.4 | July 14, 2026 | Defined all eleven Bronze Mines tunnels and their alternating directions; rebuilt Level 2's design around horizontal gaps above an angled spike ramp; added bottomless horizontal pits, bronze keys and one-time chests, the Level 10 silver key and Level 11 gate, exact crystal values and Level 11 rewards, revised shop prices, the redrawn miner and hand-held pick, thinner bronze-veined rock platforms, and the confirmed Silver Mines as Dungeon 2. |
 | 0.3 | July 14, 2026 | Added five-heart/three-life rules, green crystals, the overview shop, slower movement, visible door entry, supported-door standards, and the initial miner presentation. |

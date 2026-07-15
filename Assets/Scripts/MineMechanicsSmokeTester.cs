@@ -23,34 +23,108 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         PlayerHealth health = FindFirstObjectByType<PlayerHealth>();
         PlayerWeight weight = FindFirstObjectByType<PlayerWeight>();
         HeroMovement movement = FindFirstObjectByType<HeroMovement>();
+        MinerOutfitVisual outfitVisual = FindFirstObjectByType<MinerOutfitVisual>();
         LevelExitDoor exitDoor = FindFirstObjectByType<LevelExitDoor>();
         AutomatedPlaytestWaypoint[] waypoints =
             FindObjectsByType<AutomatedPlaytestWaypoint>(FindObjectsSortMode.None);
 
-        bool referencesPresent = health != null && weight != null && movement != null && exitDoor != null &&
-            waypoints.Length == 11;
+        Rigidbody2D movementBody = movement == null ? null : movement.GetComponent<Rigidbody2D>();
+        bool referencesPresent = health != null && weight != null && movement != null && movementBody != null &&
+            outfitVisual != null && exitDoor != null && waypoints.Length == 11;
         bool damagePassed = false;
         bool healingPassed = false;
         bool automatedJumpPassed = false;
+        bool jumpAnticipationPassed = false;
         bool weightPassed = false;
         bool exitConfiguredPassed = false;
 
         if (referencesPresent)
         {
-            yield return null;
+            float settleDeadline = Time.time + 2f;
+            while ((!movement.IsGrounded || Mathf.Abs(movementBody.linearVelocityY) > .5f) &&
+                   Time.time < settleDeadline)
+            {
+                yield return null;
+            }
+
             float startingY = movement.transform.position.y;
             float highestY = startingY;
             movement.EnableAutomatedControl(true);
             movement.SetAutomatedInput(0f, true);
-            float jumpTestEnds = Time.time + 0.3f;
+            bool showedGroundedSquat = false;
+            float squatObservationDeadline = Time.realtimeSinceStartup + .2f;
+            while (Time.realtimeSinceStartup < squatObservationDeadline && !showedGroundedSquat)
+            {
+                showedGroundedSquat = movement.IsPreparingJump &&
+                    outfitVisual.CurrentAnimationRow == 2 && outfitVisual.CurrentAnimationFrame == 1 &&
+                    Mathf.Abs(movementBody.linearVelocityY) <= .5f &&
+                    Mathf.Abs(movement.transform.position.y - startingY) <= .08f;
+                if (!showedGroundedSquat) yield return null;
+            }
+
+            // Releasing during anticipation must still produce a short hop; only the
+            // variable-height hold portion is cancelled.
+            movement.SetAutomatedInput(0f, false);
+            bool launchedAfterSquat = false;
+            bool showedRiseFrame = false;
+            float launchDeadline = Time.time + .22f;
+            while (Time.time < launchDeadline && !launchedAfterSquat)
+            {
+                highestY = Mathf.Max(highestY, movement.transform.position.y);
+                if (movementBody.linearVelocityY > 1f)
+                {
+                    launchedAfterSquat = true;
+                    float riseObservationDeadline = Time.realtimeSinceStartup + .12f;
+                    while (Time.realtimeSinceStartup < riseObservationDeadline && !showedRiseFrame)
+                    {
+                        showedRiseFrame = outfitVisual.CurrentAnimationRow == 2 &&
+                            outfitVisual.CurrentAnimationFrame == 2;
+                        if (!showedRiseFrame) yield return null;
+                    }
+                    break;
+                }
+                yield return null;
+            }
+
+            float jumpTestEnds = Time.time + .35f;
             while (Time.time < jumpTestEnds)
             {
                 highestY = Mathf.Max(highestY, movement.transform.position.y);
                 yield return null;
             }
+
+            float quickTapHeight = highestY - startingY;
+            float landingDeadline = Time.time + 1.5f;
+            while ((!movement.IsGrounded || Mathf.Abs(movementBody.linearVelocityY) > .5f) &&
+                   Time.time < landingDeadline)
+            {
+                highestY = Mathf.Max(highestY, movement.transform.position.y);
+                yield return null;
+            }
+
+            bool landedAfterQuickTap = movement.IsGrounded;
+            float heldJumpStartY = movement.transform.position.y;
+            float heldHighestY = heldJumpStartY;
+            movement.SetAutomatedInput(0f, true);
+            float heldInputEnds = Time.time + movement.JumpAnticipationSeconds + .20f;
+            while (Time.time < heldInputEnds)
+            {
+                heldHighestY = Mathf.Max(heldHighestY, movement.transform.position.y);
+                yield return null;
+            }
             movement.SetAutomatedInput(0f, false);
+            float heldObservationEnds = Time.time + .45f;
+            while (Time.time < heldObservationEnds)
+            {
+                heldHighestY = Mathf.Max(heldHighestY, movement.transform.position.y);
+                yield return null;
+            }
+
             movement.EnableAutomatedControl(false);
-            automatedJumpPassed = highestY > startingY + 0.75f;
+            float heldJumpHeight = heldHighestY - heldJumpStartY;
+            automatedJumpPassed = launchedAfterSquat && landedAfterQuickTap && quickTapHeight > .75f &&
+                heldJumpHeight > quickTapHeight + .5f;
+            jumpAnticipationPassed = showedGroundedSquat && launchedAfterSquat && showedRiseFrame;
 
             int startingHealth = health.CurrentHealth;
             damagePassed = health.TakeDamage(1, health.transform.position + Vector3.left) &&
@@ -69,8 +143,8 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
                 exitDoor.GetComponent<Collider2D>().isTrigger;
         }
 
-        bool passed = referencesPresent && automatedJumpPassed && damagePassed && healingPassed && weightPassed &&
-            exitConfiguredPassed;
+        bool passed = referencesPresent && automatedJumpPassed && jumpAnticipationPassed && damagePassed &&
+            healingPassed && weightPassed && exitConfiguredPassed;
         string reportPath = ReadArgument("-mechanicsReport") ??
             Path.Combine(Application.dataPath, "..", "Logs", "MineMechanicsSmokeTest.json");
         var result = new SmokeResult
@@ -80,6 +154,7 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             damagePassed = damagePassed,
             healingPassed = healingPassed,
             automatedJumpPassed = automatedJumpPassed,
+            jumpAnticipationPassed = jumpAnticipationPassed,
             weightCalculationPassed = weightPassed,
             exitDoorConfigured = exitConfiguredPassed,
             waypointCount = waypoints.Length
@@ -116,6 +191,7 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         public bool damagePassed;
         public bool healingPassed;
         public bool automatedJumpPassed;
+        public bool jumpAnticipationPassed;
         public bool weightCalculationPassed;
         public bool exitDoorConfigured;
         public int waypointCount;

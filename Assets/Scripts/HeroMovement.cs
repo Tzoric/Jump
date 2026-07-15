@@ -9,6 +9,7 @@ public class HeroMovement : MonoBehaviour
     [SerializeField, Min(0f)] private float speed = 7.5f;
     [SerializeField, Min(0f)] private float jumpForce = 12f;
     [SerializeField, Min(0f)] private float jumpTime = 0.24f;
+    [SerializeField, Range(0f, 0.2f)] private float jumpAnticipationSeconds = 0.08f;
 
     [Header("Ground Check")]
     [SerializeField] private LayerMask groundLayer;
@@ -24,6 +25,8 @@ public class HeroMovement : MonoBehaviour
     private float horizontalInput;
     private float jumpTimeCounter;
     private bool isJumping;
+    private bool isPreparingJump;
+    private float jumpLaunchAt;
     private bool automatedControlEnabled;
     private float automatedHorizontalInput;
     private bool automatedJumpHeld;
@@ -33,6 +36,8 @@ public class HeroMovement : MonoBehaviour
     private bool inputLocked;
 
     public bool IsGrounded { get; private set; }
+    public bool IsPreparingJump => isPreparingJump;
+    public float JumpAnticipationSeconds => jumpAnticipationSeconds;
     public int BlueCrystalCount => blueCrystalCount;
     public int BlackBigCrystalCount => blackBigCrystalCount;
 
@@ -66,9 +71,17 @@ public class HeroMovement : MonoBehaviour
         IsGrounded = feetPosition != null &&
             Physics2D.OverlapCircle(feetPosition.position, groundCheckCircle, groundLayer);
 
-        if (IsGrounded && jumpPressed)
+        if (IsGrounded && jumpPressed && !isPreparingJump)
         {
-            isJumping = true;
+            isPreparingJump = true;
+            isJumping = jumpHeld;
+            jumpLaunchAt = Time.time + jumpAnticipationSeconds;
+        }
+
+        if (isPreparingJump && Time.time >= jumpLaunchAt)
+        {
+            isPreparingJump = false;
+            isJumping = jumpHeld;
             heroRb.linearVelocityY = jumpForce;
             jumpTimeCounter = jumpTime;
         }
@@ -117,18 +130,24 @@ public class HeroMovement : MonoBehaviour
         }
     }
 
-    public void ConfigureMovement(float moveSpeed, float verticalJumpForce, float heldJumpTime)
+    public void ConfigureMovement(float moveSpeed, float verticalJumpForce, float heldJumpTime,
+        float anticipationSeconds = 0.08f)
     {
         speed = Mathf.Max(0f, moveSpeed);
         jumpForce = Mathf.Max(0f, verticalJumpForce);
         jumpTime = Mathf.Max(0f, heldJumpTime);
+        jumpAnticipationSeconds = Mathf.Clamp(anticipationSeconds, 0f, 0.2f);
     }
 
     public void SetInputLocked(bool locked)
     {
         inputLocked = locked;
         horizontalInput = 0f;
-        if (locked && heroRb != null) heroRb.linearVelocityX = 0f;
+        if (locked)
+        {
+            CancelJumpState();
+            if (heroRb != null) heroRb.linearVelocityX = 0f;
+        }
     }
 
     public void EnableAutomatedControl(bool enabled)
@@ -137,6 +156,7 @@ public class HeroMovement : MonoBehaviour
         automatedHorizontalInput = 0f;
         automatedJumpHeld = false;
         previousAutomatedJumpHeld = false;
+        CancelJumpState();
     }
 
     public void SetAutomatedInput(float horizontal, bool jumpHeld)
@@ -193,6 +213,19 @@ public class HeroMovement : MonoBehaviour
         {
             blackBigCrystalCountDisplay.text = blackBigCrystalCount.ToString();
         }
+    }
+
+    private void CancelJumpState()
+    {
+        isPreparingJump = false;
+        isJumping = false;
+        jumpLaunchAt = 0f;
+        jumpTimeCounter = 0f;
+    }
+
+    private void OnDisable()
+    {
+        CancelJumpState();
     }
 
     private void OnDrawGizmosSelected()
