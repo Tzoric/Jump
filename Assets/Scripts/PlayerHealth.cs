@@ -7,7 +7,7 @@ using UnityEngine.Events;
 public sealed class PlayerHealth : MonoBehaviour
 {
     [Header("Health")]
-    [SerializeField, Min(1)] private int maxHealth = 3;
+    [SerializeField, Min(1)] private int maxHealth = 5;
     [SerializeField, Min(0f)] private float invulnerabilitySeconds = 1f;
 
     [Header("Respawn")]
@@ -25,6 +25,7 @@ public sealed class PlayerHealth : MonoBehaviour
     private int currentHealth;
     private float invulnerableUntil;
     private bool respawning;
+    private TextMeshProUGUI livesDisplay;
 
     public int CurrentHealth => currentHealth;
     public int MaxHealth => maxHealth;
@@ -37,6 +38,7 @@ public sealed class PlayerHealth : MonoBehaviour
         movement = GetComponent<HeroMovement>();
         spriteRenderer = GetComponent<SpriteRenderer>();
         respawnPosition = transform.position;
+        maxHealth = GameProgress.MaxHearts;
         currentHealth = maxHealth;
         RefreshDisplay();
     }
@@ -94,6 +96,21 @@ public sealed class PlayerHealth : MonoBehaviour
         RefreshDisplay();
     }
 
+    public void ConfigureDisplays(TextMeshProUGUI health, TextMeshProUGUI lives)
+    {
+        healthDisplay = health;
+        livesDisplay = lives;
+        RefreshDisplay();
+    }
+
+    private void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.H) && currentHealth < maxHealth && GameProgress.ConsumePotion())
+        {
+            Heal(maxHealth);
+        }
+    }
+
     private IEnumerator DamageFlashRoutine()
     {
         if (spriteRenderer == null)
@@ -117,6 +134,7 @@ public sealed class PlayerHealth : MonoBehaviour
     {
         respawning = true;
         RespawnCount++;
+        bool hasAnotherLife = GameProgress.ConsumeLife();
         if (movement != null)
         {
             movement.enabled = false;
@@ -129,6 +147,12 @@ public sealed class PlayerHealth : MonoBehaviour
         }
 
         yield return new WaitForSeconds(respawnDelay);
+
+        if (!hasAnotherLife)
+        {
+            UnityEngine.SceneManagement.SceneManager.LoadScene("DungeonOverview");
+            yield break;
+        }
 
         transform.position = respawnPosition;
         body.linearVelocity = Vector2.zero;
@@ -154,8 +178,10 @@ public sealed class PlayerHealth : MonoBehaviour
     {
         if (healthDisplay != null)
         {
-            healthDisplay.text = $"HEALTH  {currentHealth} / {maxHealth}";
+            healthDisplay.text = $"HEARTS  {new string('♥', currentHealth)}{new string('♡', maxHealth - currentHealth)}";
         }
+
+        if (livesDisplay != null) livesDisplay.text = $"LIVES  {GameProgress.Lives}";
 
         healthChanged?.Invoke(currentHealth, maxHealth);
     }

@@ -6,9 +6,9 @@ public class HeroMovement : MonoBehaviour
 {
     [Header("Movement")]
     [SerializeField] private Rigidbody2D heroRb;
-    [SerializeField, Min(0f)] private float speed = 10f;
-    [SerializeField, Min(0f)] private float jumpForce = 15f;
-    [SerializeField, Min(0f)] private float jumpTime = 0.35f;
+    [SerializeField, Min(0f)] private float speed = 7.5f;
+    [SerializeField, Min(0f)] private float jumpForce = 9f;
+    [SerializeField, Min(0f)] private float jumpTime = 0.24f;
 
     [Header("Ground Check")]
     [SerializeField] private LayerMask groundLayer;
@@ -30,6 +30,7 @@ public class HeroMovement : MonoBehaviour
     private bool previousAutomatedJumpHeld;
     private int blueCrystalCount;
     private int blackBigCrystalCount;
+    private bool inputLocked;
 
     public bool IsGrounded { get; private set; }
     public int BlueCrystalCount => blueCrystalCount;
@@ -45,6 +46,12 @@ public class HeroMovement : MonoBehaviour
 
     private void Update()
     {
+        if (inputLocked)
+        {
+            horizontalInput = 0f;
+            animator.SetFloat("Speed", 0f);
+            return;
+        }
         ReadInput(out bool jumpPressed, out bool jumpHeld, out bool jumpReleased);
 
         if (horizontalInput < 0f)
@@ -91,7 +98,22 @@ public class HeroMovement : MonoBehaviour
 
     private void FixedUpdate()
     {
+        if (inputLocked) return;
         heroRb.linearVelocityX = horizontalInput * speed;
+    }
+
+    public void ConfigureMovement(float moveSpeed, float verticalJumpForce, float heldJumpTime)
+    {
+        speed = Mathf.Max(0f, moveSpeed);
+        jumpForce = Mathf.Max(0f, verticalJumpForce);
+        jumpTime = Mathf.Max(0f, heldJumpTime);
+    }
+
+    public void SetInputLocked(bool locked)
+    {
+        inputLocked = locked;
+        horizontalInput = 0f;
+        if (locked && heroRb != null) heroRb.linearVelocityX = 0f;
     }
 
     public void EnableAutomatedControl(bool enabled)

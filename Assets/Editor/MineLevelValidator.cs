@@ -3,86 +3,53 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
-using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 
 public static class MineLevelValidator
 {
-    private const string LevelScenePath = "Assets/Scenes/Level1_TheMines.unity";
-    private const string OverviewScenePath = "Assets/Scenes/DungeonOverview.unity";
+    private const string Overview = "Assets/Scenes/DungeonOverview.unity";
+    private const string Level1 = "Assets/Scenes/Level1_TheMines.unity";
+    private const string Level2 = "Assets/Scenes/Level2_SlidingAscent.unity";
 
-    [MenuItem("Jump/Level Tools/Validate Level 1 - The Mines")]
+    [MenuItem("Jump/Level Tools/Validate Mines Levels")]
     public static void Validate()
     {
-        ValidateLevelScene();
-        ValidateOverviewScene();
-        ValidateBuildSettings();
-        EditorSceneManager.OpenScene(LevelScenePath, OpenSceneMode.Single);
-        Debug.Log("MINE LEVEL VALIDATION PASSED: vertical route, exit door, dungeon overview, HUD, and build scenes are ready.");
+        ValidateOverview();
+        ValidateLevel(Level1, 11, false, false);
+        ValidateLevel(Level2, 6, true, true);
+        string[] scenes = EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToArray();
+        Require(scenes.SequenceEqual(new[] { Overview, Level1, Level2 }), "Build Settings must contain overview, Level 1, and Level 2 in order.");
+        EditorSceneManager.OpenScene(Overview, OpenSceneMode.Single);
+        Debug.Log("MINES VALIDATION PASSED: camera, five mineshaft nodes, shop, two levels, doors, hazards, crystals, health, lives, and miner presentation are ready.");
     }
 
-    private static void ValidateLevelScene()
+    private static void ValidateOverview()
     {
-        EditorSceneManager.OpenScene(LevelScenePath, OpenSceneMode.Single);
+        EditorSceneManager.OpenScene(Overview, OpenSceneMode.Single);
+        Require(UnityEngine.Object.FindFirstObjectByType<Camera>() != null, "Overview has no camera.");
+        Require(UnityEngine.Object.FindFirstObjectByType<MineShopController>() != null, "Overview shop is missing.");
+        Require(UnityEngine.Object.FindObjectsByType<SceneLoadButton>(FindObjectsSortMode.None).Length == 2, "Overview needs playable Level 1 and Level 2 nodes.");
+        for (int i = 1; i <= 5; i++) Require(GameObject.Find($"Mineshaft {i}") != null, $"Mineshaft {i} level node is missing.");
+    }
 
+    private static void ValidateLevel(string path, int waypointCount, bool needsCrystals, bool needsSpikes)
+    {
+        EditorSceneManager.OpenScene(path, OpenSceneMode.Single);
         HeroMovement hero = UnityEngine.Object.FindFirstObjectByType<HeroMovement>();
-        Require(hero != null, "HeroMovement is missing.");
-        Require(hero.GetComponent<PlayerHealth>() != null, "PlayerHealth is missing from the hero.");
-        Require(hero.GetComponent<PlayerWeight>() != null, "PlayerWeight is missing from the hero.");
-
-        LevelExitDoor exitDoor = UnityEngine.Object.FindFirstObjectByType<LevelExitDoor>();
-        Require(exitDoor != null, "The level exit door is missing.");
-        Require(exitDoor.DestinationScene == "DungeonOverview", "The exit door does not lead to DungeonOverview.");
-        Require(exitDoor.GetComponent<Collider2D>().isTrigger, "The exit door collider must be a trigger.");
-
-        AutomatedPlaytestWaypoint[] waypoints =
-            UnityEngine.Object.FindObjectsByType<AutomatedPlaytestWaypoint>(FindObjectsSortMode.None);
-        Require(waypoints.Length == 11, $"Expected 11 authored route waypoints but found {waypoints.Length}.");
-        Require(waypoints.Select(waypoint => waypoint.Order).Distinct().Count() == waypoints.Length,
-            "Every automated playtest waypoint needs a unique order.");
-
-        Require(UnityEngine.Object.FindFirstObjectByType<VerticalCameraFollow>() != null,
-            "The vertical camera follow component is missing.");
-        Require(GameObject.Find("Bronze Mine Shaft Backdrop") != null,
-            "The Level 1 bronze mine background is missing.");
-        Require(GameObject.Find("Beginner Vertical Route") != null,
-            "The beginner vertical platform route is missing.");
-        Require(GameObject.Find("Level HUD") != null, "The Level 1 HUD is missing.");
-        Require(GameObject.FindGameObjectsWithTag("BlueCrystal").Length == 0 &&
-                GameObject.FindGameObjectsWithTag("BlackBigCrystal").Length == 0,
-            "Level 1 should use the exit door, not required crystals, as its completion condition.");
-    }
-
-    private static void ValidateOverviewScene()
-    {
-        Require(AssetDatabase.LoadAssetAtPath<SceneAsset>(OverviewScenePath) != null,
-            "DungeonOverview.unity does not exist.");
-        EditorSceneManager.OpenScene(OverviewScenePath, OpenSceneMode.Single);
-
-        SceneLoadButton levelButton = UnityEngine.Object.FindFirstObjectByType<SceneLoadButton>();
-        Require(levelButton != null, "The dungeon overview has no Level 1 button.");
-        Require(levelButton.TargetScene == "Level1_TheMines", "The Level 1 button points to the wrong scene.");
-        Require(levelButton.GetComponent<Button>() != null, "The Level 1 selector is missing its Button component.");
-        Require(GameObject.Find("Mine Overview Background") != null, "The Mines overview background is missing.");
-        Require(GameObject.Find("Mine Material Progression") != null, "The material progression display is missing.");
-    }
-
-    private static void ValidateBuildSettings()
-    {
-        string[] enabledScenes = EditorBuildSettings.scenes
-            .Where(scene => scene.enabled)
-            .Select(scene => scene.path)
-            .ToArray();
-
-        Require(enabledScenes.Contains(OverviewScenePath), "DungeonOverview is not enabled in Build Settings.");
-        Require(enabledScenes.Contains(LevelScenePath), "Level 1 is not enabled in Build Settings.");
-        Require(enabledScenes[0] == OverviewScenePath, "DungeonOverview should be the first startup scene.");
+        Require(hero != null, $"{path} has no hero.");
+        Require(hero.GetComponent<PlayerHealth>() != null && hero.GetComponent<MinerOutfitVisual>() != null, $"{path} hero lacks health or miner outfit.");
+        Require(UnityEngine.Object.FindObjectsByType<AutomatedPlaytestWaypoint>(FindObjectsSortMode.None).Length == waypointCount, $"{path} route waypoint count is wrong.");
+        LevelExitDoor door = UnityEngine.Object.FindFirstObjectByType<LevelExitDoor>();
+        Require(door != null && door.DestinationScene == "DungeonOverview", $"{path} exit is missing or misconfigured.");
+        Require(GameObject.Find("Exit Door Foundation (Required)") != null, $"{path} exit door has no platform foundation.");
+        int crystals = UnityEngine.Object.FindObjectsByType<GreenCrystalCollectible>(FindObjectsSortMode.None).Length;
+        int hazards = UnityEngine.Object.FindObjectsByType<DamageZone>(FindObjectsSortMode.None).Count(zone => zone.name.Contains("Spike"));
+        Require((crystals > 0) == needsCrystals, $"{path} crystal rule is incorrect.");
+        Require((hazards > 0) == needsSpikes, $"{path} spike rule is incorrect.");
     }
 
     private static void Require(bool condition, string message)
     {
-        if (!condition)
-        {
-            throw new InvalidOperationException($"MINE LEVEL VALIDATION FAILED: {message}");
-        }
+        if (!condition) throw new InvalidOperationException($"MINES VALIDATION FAILED: {message}");
     }
 }

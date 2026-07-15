@@ -11,6 +11,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Level1_TheMines.unity
     guid: 746fb5bfb6aace04a9ef3964766dd8c2
+  - enabled: 1
+    path: Assets/Scenes/Level2_SlidingAscent.unity
+    guid: cfdf07302ac6a5a45a03fac87e57890f
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
   m_UseUCBPForAssetBundles: 0

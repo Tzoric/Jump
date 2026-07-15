@@ -3,7 +3,7 @@
 ## Game Design Document
 
 **Status:** Early design draft  
-**Version:** 0.2  
+**Version:** 0.3  
 **Last updated:** July 14, 2026  
 **Working title:** Jump
 
@@ -72,7 +72,7 @@ The long-term level goal is to reach the end of the stage. A key may be required
 
 **Decision needed:** Decide whether every level requires a key, only selected puzzle levels require one, or the key is unrelated to level completion.
 
-The current development build completes Level 1 when the grounded player walks through the mine exit door. The door returns the player to the dungeon overview. Required crystals are not part of Level 1's completion condition.
+The current build completes a level when the grounded miner reaches its exit. Control is briefly locked while the miner visibly walks into the doorway, then the overview loads. Required crystals are not an exit condition. Every ordinary exit must have a solid platform made from the level's rock and tier material directly underneath it unless the level brief explicitly permits an unsupported door.
 
 ### Health and failure
 
@@ -98,7 +98,7 @@ The current development build completes Level 1 when the grounded player walks t
 
 ### Health
 
-The current health system supports damage, temporary invulnerability after a hit, healing, death, and respawning. Health upgrades and healing items can build on this system later.
+The implemented health system uses five base hearts, one-heart hazard damage, temporary invulnerability, potion healing, three starting lives, death, respawning, and permanent heart-capacity upgrades.
 
 ### Inventory
 
@@ -148,7 +148,7 @@ Skins may be purchased with earned currency. Cosmetics should not affect level r
 
 ### Gem values
 
-Gems are introduced in Dungeon 1, Level 2. Later levels may contain gems worth 5, 10, 15, or 20. Different values should have clearly different visuals so the player can recognize them immediately.
+Green crystals are introduced in Dungeon 1, Level 2 and save immediately as the current shop currency. Later levels may contain crystals worth 5, 10, 15, or 20. Different values should have clearly different visuals.
 
 ### Unlocking content
 
@@ -297,7 +297,7 @@ Level 1 is part of the bronze tier. Material tiers are environmental progression
 
 ## 8. Shop plan
 
-The shop may sell upgrades, consumables, and skins.
+The overview shop sells upgrades and consumables. Current prices are 10 green crystals for an extra life, 5 for a health potion, and 25 for a permanent +1-heart upgrade. Press `H` in a level to consume a potion.
 
 ### Initial categories
 
@@ -493,7 +493,18 @@ These ideas are intentionally saved for later so they are not lost or implemente
 
 ## 14. Change log
 
+### Implemented rules in version 0.3
+
+- Horizontal movement is 75% of its original speed; jump force and gravity are 60% of their original values so side and vertical motion read together.
+- The miner is 125% of the former size and wears a miner helmet while carrying a pickaxe.
+- Players have five base hearts and start a new save with three lives. A spike hit costs one heart. Shop upgrades may add hearts.
+- Level 2, **Sliding Ascent**, travels up and right across connected 22-degree ramps. Falling slides the player toward the bottom. Four spike groups and six collectible green crystals teach hazards and currency.
+- Each overview mineshaft is a level node. Levels 1 and 2 are playable and shafts 3–5 are represented as locked future levels.
+- Platforms visually combine the level's rock with bronze binding in the current material tier.
+- The overview provides an earned-currency shop for extra lives, potions, and heart upgrades.
+
 | Version | Date | Change |
 |---|---|---|
+| 0.3 | July 14, 2026 | Added five-heart/three-life rules, green crystals and shop prices, Sliding Ascent Level 2, slower movement, miner presentation, visible door entry, supported-door standards, and rock/bronze platform art. |
 | 0.2 | July 14, 2026 | Rebuilt Level 1 as Bronze Shaft, made the exit door the completion rule, added the dungeon overview flow, and defined bronze-to-diamond Mines material tiers. |
 | 0.1 | July 14, 2026 | Organized the original Word outline, incorporated the current Mines mechanics, and added reusable dungeon and level briefs. |

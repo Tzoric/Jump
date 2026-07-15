@@ -17,4 +17,10 @@ public sealed class DamageZone : MonoBehaviour
             health.TakeDamage(damage, transform.position);
         }
     }
+
+    private void OnTriggerStay2D(Collider2D other)
+    {
+        PlayerHealth health = other.GetComponentInParent<PlayerHealth>();
+        if (health != null) health.TakeDamage(damage, transform.position);
+    }
 }
