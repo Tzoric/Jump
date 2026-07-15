@@ -85,6 +85,7 @@ public static class MineLevelBuilder
     private const string MinerCharacterPath = Art + "/MinerCharacterV2.png";
     private const string MinerAnimationSheetPath = Art + "/MinerAnimationSheet.png";
     private const string MinerOutfitPath = Art + "/BronzeMinerOutfit.asset";
+    private const string SlideMaterialPath = Art + "/BronzeRampSlide.physicsMaterial2D";
     private const string PickPath = Art + "/MinerPickaxe.png";
     private const string BronzeKeyPath = Art + "/BronzeKey.png";
     private const string SilverKeyPath = Art + "/SilverKey.png";
@@ -105,6 +106,7 @@ public static class MineLevelBuilder
         Sprite pick = ImportSprite(PickPath, 32f);
         CharacterOutfitDefinition minerOutfit = EnsureOutfitDefinition(animationSheet, pick);
         GameObject heroPrefab = EnsureHeroPrefab(miner, minerOutfit);
+        PhysicsMaterial2D slideMaterial = EnsureSlideMaterial();
         ArtSet art = new(
             ImportSprite(PlatformPath, 16f), ImportSprite(GreenGemPath, 24f),
             ImportSprite(BlueGemPath, 24f), ImportSprite(PurpleGemPath, 24f),
@@ -116,7 +118,7 @@ public static class MineLevelBuilder
         foreach (LevelSpec level in Levels)
         {
             if (level.Number == 1) BuildLevel1(level, heroPrefab, art);
-            else if (level.Number == 2) BuildLevel2(level, heroPrefab, art);
+            else if (level.Number == 2) BuildLevel2(level, heroPrefab, art, slideMaterial);
             else BuildGeneratedLevel(level, heroPrefab, art);
         }
         BuildOverview(overview);
@@ -152,6 +154,20 @@ public static class MineLevelBuilder
         outfit.Configure("Main Hero", "bronze_miner", animationSheet, pickSprite);
         EditorUtility.SetDirty(outfit);
         return outfit;
+    }
+
+    private static PhysicsMaterial2D EnsureSlideMaterial()
+    {
+        PhysicsMaterial2D material = AssetDatabase.LoadAssetAtPath<PhysicsMaterial2D>(SlideMaterialPath);
+        if (material == null)
+        {
+            material = new PhysicsMaterial2D("Bronze Ramp Slide");
+            AssetDatabase.CreateAsset(material, SlideMaterialPath);
+        }
+        material.friction = 0f;
+        material.bounciness = 0f;
+        EditorUtility.SetDirty(material);
+        return material;
     }
 
     private static GameObject EnsureHeroPrefab(Sprite minerSprite, CharacterOutfitDefinition minerOutfit)
@@ -221,7 +237,7 @@ public static class MineLevelBuilder
         for (int i=0;i<positions.Length;i++)
         {
             CreatePlatform(route, art.Platform, $"Bronze Ledge {i+1:00}", positions[i], 4.8f, 0);
-            CreateWaypoint(root, new Vector2(positions[i].x>0?.25f:-.25f, positions[i].y+1.5f), i+1);
+            CreateWaypoint(root, new Vector2(positions[i].x, positions[i].y+1.4f), i+1);
         }
         CreateBronzeChallenge(root, art, level.Number, new Vector2(6.5f,14.6f), new Vector2(-6.3f,24.8f));
         CreateDoor(root, art, level.Number, new Vector2(-3.8f,29.45f));
@@ -230,15 +246,15 @@ public static class MineLevelBuilder
         EditorSceneManager.SaveScene(scene, level.Path);
     }
 
-    private static void BuildLevel2(LevelSpec level, GameObject prefab, ArtSet art)
+    private static void BuildLevel2(LevelSpec level, GameObject prefab, ArtSet art, PhysicsMaterial2D slideMaterial)
     {
         Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         Transform root = new GameObject("Level 2 - Sliding Ascent").transform;
-        CreateBackdropAndLight(root, art.Backdrop, new Vector3(11,0,5), new Vector2(1.9f,1.3f), -14f);
+        CreateBackdropAndLight(root, art.Backdrop, new Vector3(11,-2,5), new Vector2(1.9f,1.5f), -16f);
 
         Vector2 resetPosition = new(-10f, 7.05f);
         GameObject hero = SpawnHero(prefab, scene, resetPosition);
-        CreateAngledCamera(hero.transform, -7f, 31f, -4f, 5.5f);
+        CreateAngledCamera(hero.transform, -7f, 31f, -7f, 5.5f);
 
         Transform upperRoute = new GameObject("Upper Horizontal Gap Route").transform;
         upperRoute.SetParent(root);
@@ -259,15 +275,16 @@ public static class MineLevelBuilder
 
         Transform lowerRamp = new GameObject("Lower Steep Spike Reset Ramp").transform;
         lowerRamp.SetParent(root);
-        const float rampAngle = -16f;
+        const float rampAngle = -18f;
         float rampSlope = Mathf.Tan(rampAngle * Mathf.Deg2Rad);
         for (int i = 0; i < 7; i++)
         {
             float x = -9f + i * 7.2f;
             float y = 2.25f + (x + 9f) * rampSlope;
             Vector2 rampPosition = new(x, y);
-            CreatePlatform(lowerRamp, art.Platform, $"Lower Reset Ramp {i + 1:00}",
+            GameObject ramp = CreatePlatform(lowerRamp, art.Platform, $"Lower Reset Ramp {i + 1:00}",
                 rampPosition, 7.7f, rampAngle);
+            ramp.GetComponent<BoxCollider2D>().sharedMaterial = slideMaterial;
             if (i > 0 && i < 6)
                 CreateSpike(lowerRamp, art.Spike, rampPosition + Vector2.up * .72f, rampAngle);
         }
@@ -285,8 +302,8 @@ public static class MineLevelBuilder
 
         CreateBronzeChallenge(root, art, level.Number, new Vector2(15.3f,8.45f), new Vector2(26.7f,8.8f));
         CreateDoor(root, art, level.Number, new Vector2(33.4f,8.55f));
-        CreateBoundary(root, "Level 2 Left Mine Wall", new Vector2(-15f,-1f), new Vector2(1f,34f));
-        CreateBoundary(root, "Level 2 Right Mine Wall", new Vector2(39f,-1f), new Vector2(1f,34f));
+        CreateBoundary(root, "Level 2 Left Mine Wall", new Vector2(-15f,-3f), new Vector2(1f,42f));
+        CreateBoundary(root, "Level 2 Right Mine Wall", new Vector2(39f,-3f), new Vector2(1f,42f));
         CreateHud(hero, level,
             "CROSS THE UPPER GAPS     FALLS LEAD TO THE SPIKE RAMP     SLIDE TO THE BOTTOM TO RETRY");
         EditorSceneManager.SaveScene(scene,level.Path);
@@ -347,7 +364,7 @@ public static class MineLevelBuilder
             float y=-.1f+i*2.65f; topY=y;
             float x=i%2==0?-2.6f:2.6f;
             CreatePlatform(route,art.Platform,$"Vertical Ledge {i+1:00}",new Vector2(x,y),width,0);
-            CreateWaypoint(root,new Vector2(x>0?.4f:-.4f,y+1.5f),i+1);
+            CreateWaypoint(root,new Vector2(x,y+1.4f),i+1);
             if(i>1 && i%(level.Number>=8?2:3)==0) CreateSpike(root,art.Spike,new Vector2(x+(i%4==0?1.1f:-1.1f),y+.8f),0);
             if(level.Number<11 && i>2 && i%4==1) CreateGem(root,art.GreenGem,new Vector2(x,y+2.1f),1);
         }

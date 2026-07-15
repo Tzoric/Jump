@@ -173,7 +173,8 @@ The principal tunnel direction alternates vertical, angled, and horizontal. Leve
 ### Level 2 - Sliding Ascent
 
 - The required route moves laterally across thin, flat, horizontal platforms separated by clear gaps.
-- A continuous steep ramp runs underneath the upper route and slopes back toward the level start/bottom.
+- A continuous 18-degree downward ramp runs underneath the upper route and slopes back toward the level start/bottom.
+- The ramp uses a dedicated zero- or near-zero-friction 2D physics material. The miner must not be able to perch on it and must slide reliably to the retry bottom when movement input is released.
 - Falling through an upper gap lands the miner on the ramp. Gravity carries the miner to the bottom, forcing the upper-platform route to be attempted again.
 - Spike groups project from the ramp. The miner must jump while sliding to avoid them; every hit costs one heart.
 - The ramp is a recoverable reset route, not a bottomless death zone.

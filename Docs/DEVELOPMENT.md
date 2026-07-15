@@ -75,7 +75,8 @@ Difficulty and length increase through the sequence. The direction cycle is vert
 ### Level 2 reset behavior
 
 - The completion route consists of thin horizontal platforms separated by gaps.
-- The steep ramp under the route catches missed jumps and slides the miner back toward the bottom/start.
+- The ramp under the route descends 18 degrees, catches missed jumps, and slides the miner back toward the bottom/start.
+- Assign the ramp a dedicated zero- or near-zero-friction `PhysicsMaterial2D`; default platform friction is not acceptable. With movement input released, the miner must not perch and must reach the retry bottom reliably.
 - Ramp spikes project upward and deal one heart each. Players must jump over them while sliding.
 - Falling onto this ramp is recoverable and does not itself consume a life.
 - A bottom reset returns the player to the route start without changing persistent key, chest, or crystal state.
@@ -109,7 +110,7 @@ Validation should fail if any of the following contracts are broken:
 - A scene or level node is missing from progression order.
 - A level lacks a bronze key, chest, supported exit, player, camera, or automated route.
 - Level 11 can unlock without both prerequisites.
-- Level 2 lacks its upper gaps, reset ramp, or spike hazards.
+- Level 2 lacks its upper gaps, 18-degree low-friction reset ramp, reliable no-input slide, or spike hazards.
 - Levels 3, 6, or 9 lack lethal pit zones.
 - Level 10 lacks the silver key.
 - Level 11 does not have exactly five blue value-5 crystals and one purple value-20 crystal.

@@ -227,7 +227,9 @@ public sealed class AutomatedPlaytester : MonoBehaviour
             Vector2 offset = waypoints[waypointIndex].transform.position - hero.transform.position;
             Rigidbody2D body = hero.GetComponent<Rigidbody2D>();
             bool verticallyAligned = Mathf.Abs(offset.y) <= 0.3f;
-            bool horizontallyAligned = Mathf.Abs(offset.x) <= 1.6f;
+            // Reach the authored landing center before advancing. A broad tolerance let the
+            // controller launch from ledge tips and collide with the side of the next platform.
+            bool horizontallyAligned = Mathf.Abs(offset.x) <= .65f;
             bool settled = body != null && Mathf.Abs(body.linearVelocity.y) <= 0.2f;
             if (!verticallyAligned || !horizontallyAligned || !settled)
             {

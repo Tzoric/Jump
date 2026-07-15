@@ -12,6 +12,7 @@ public static class MineLevelValidator
     private const string Overview = "Assets/Scenes/DungeonOverview.unity";
     private const string PlatformArt = "Assets/Art/Generated/MineRockBronzePlatform.png";
     private const string MinerArt = "Assets/Art/Generated/MinerCharacterV2.png";
+    private const string MinerAnimationArt = "Assets/Art/Generated/MinerAnimationSheet.png";
     private const string PickArt = "Assets/Art/Generated/MinerPickaxe.png";
 
     private enum ShaftDirection
@@ -59,6 +60,7 @@ public static class MineLevelValidator
     {
         ValidateEconomyRules();
         ValidatePlatformArtwork();
+        ValidateAnimationArtwork();
         ValidateOverview();
 
         var routeLengths = new Dictionary<int, float>();
@@ -119,6 +121,39 @@ public static class MineLevelValidator
             Require(darkRock > opaque * .35f, "Platform art must read primarily as dark mine rock.");
             Require(bronze > opaque * .01f && bronze < opaque * .30f, "Platform art needs restrained, visible bronze veins.");
             Require(interiorBronze > bronze * .25f, "Bronze must vein through the rocks rather than only frame the platform edge.");
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(texture);
+        }
+    }
+
+    private static void ValidateAnimationArtwork()
+    {
+        Require(File.Exists(ProjectFilePath(MinerAnimationArt)),
+            $"Miner animation sheet is missing at {MinerAnimationArt}.");
+        byte[] png = File.ReadAllBytes(ProjectFilePath(MinerAnimationArt));
+        var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+        try
+        {
+            Require(texture.LoadImage(png, false), "Miner animation sheet cannot be decoded.");
+            Require(texture.width >= 600 && texture.height >= 500,
+                "Miner animation sheet is too small for a readable 6-by-5 frame grid.");
+            Color32[] pixels = texture.GetPixels32();
+            for (int row = 0; row < 5; row++)
+            for (int column = 0; column < 6; column++)
+            {
+                int x0 = Mathf.RoundToInt(column * texture.width / 6f);
+                int x1 = Mathf.RoundToInt((column + 1) * texture.width / 6f);
+                int y0 = Mathf.RoundToInt(row * texture.height / 5f);
+                int y1 = Mathf.RoundToInt((row + 1) * texture.height / 5f);
+                int visible = 0;
+                for (int y = y0; y < y1; y++)
+                for (int x = x0; x < x1; x++)
+                    if (pixels[y * texture.width + x].a >= 64) visible++;
+                Require(visible >= 500,
+                    $"Miner animation grid cell row {row + 1}, column {column + 1} is empty.");
+            }
         }
         finally
         {
@@ -228,6 +263,15 @@ public static class MineLevelValidator
         Require(miner != null && miner.enabled, $"{level.SceneName} must use the completely remade miner sprite.");
         Require(pick != null && pick.enabled, $"{level.SceneName} miner needs the separate hand-held pick sprite.");
         Require(outfit.VisualRenderer == miner, $"{level.SceneName} miner outfit is not driving the remade body renderer.");
+        CharacterOutfitDefinition definition = outfit.Outfit;
+        Require(definition != null && definition.CharacterIdentity == "Main Hero" && definition.OutfitId == "bronze_miner",
+            $"{level.SceneName} must use the reusable Main Hero bronze-miner outfit profile.");
+        Require(definition.AnimationSheet != null &&
+                NormalizePath(AssetDatabase.GetAssetPath(definition.AnimationSheet)) == NormalizePath(MinerAnimationArt),
+            $"{level.SceneName} outfit profile is missing its 30-frame animation sheet.");
+        TextureImporter animationImporter = AssetImporter.GetAtPath(MinerAnimationArt) as TextureImporter;
+        Require(animationImporter != null && animationImporter.isReadable,
+            "Miner animation sheet must stay readable for runtime frame slicing and future outfit swaps.");
         Require(pick.transform.IsChildOf(hero.transform), $"{level.SceneName} pick must move as part of the miner hierarchy.");
         SerializedProperty handPickaxe = new SerializedObject(outfit).FindProperty("handPickaxe");
         Transform handRig = handPickaxe?.objectReferenceValue as Transform;
@@ -341,6 +385,8 @@ public static class MineLevelValidator
         Require(upper.Length >= 5, "Level 2 needs at least five flat upper horizontal platforms.");
         Require(CountHorizontalGaps(upper) >= 4, "Level 2 upper platforms need real jump gaps between them.");
         Require(ramp.Length >= 1, "Level 2 needs a steep lower sliding ramp.");
+        Require(ramp.All(platform => platform.sharedMaterial != null && platform.sharedMaterial.friction <= .05f),
+            "Level 2 lower ramp must use a low-friction material so falls reliably slide to the bottom.");
         Require(ramp.Average(platform => platform.bounds.center.y) < upper.Average(platform => platform.bounds.center.y),
             "Level 2 sliding ramp must sit below the upper platform route.");
         Require(SceneComponents<DamageZone>().Count(zone =>
