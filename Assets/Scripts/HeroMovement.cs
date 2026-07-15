@@ -1,56 +1,74 @@
-using System.Numerics;
 using TMPro;
-using Unity.VisualScripting;
 using UnityEngine;
-using UnityEngine.InputSystem;
 
+[RequireComponent(typeof(Rigidbody2D), typeof(SpriteRenderer), typeof(Animator))]
 public class HeroMovement : MonoBehaviour
 {
-    public Rigidbody2D heroRb;
-    public float speed;
-    public float input;
-    public float jumpForce;
-    public SpriteRenderer spriteRenderer;
-    public LayerMask groundLayer;
-    public bool isGrounded;
-    public Transform feetPosition;
-    public float groundCheckCircle;
-    public float jumpTime = 0.35f;
+    [Header("Movement")]
+    [SerializeField] private Rigidbody2D heroRb;
+    [SerializeField, Min(0f)] private float speed = 10f;
+    [SerializeField, Min(0f)] private float jumpForce = 15f;
+    [SerializeField, Min(0f)] private float jumpTime = 0.35f;
+
+    [Header("Ground Check")]
+    [SerializeField] private LayerMask groundLayer;
+    [SerializeField] private Transform feetPosition;
+    [SerializeField, Min(0.01f)] private float groundCheckCircle = 0.3f;
+
+    [Header("Presentation")]
+    [SerializeField] private SpriteRenderer spriteRenderer;
+    [SerializeField] private Animator animator;
+    [SerializeField] private TextMeshProUGUI blueCrystalCountDisplay;
+    [SerializeField] private TextMeshProUGUI blackBigCrystalCountDisplay;
+
+    private float horizontalInput;
     private float jumpTimeCounter;
-    private bool isJumping = false;
-    public Animator animator;
-    private int blueCrystalCount=0;
-    private int blackBigCrystalCount=0;
+    private bool isJumping;
+    private bool automatedControlEnabled;
+    private float automatedHorizontalInput;
+    private bool automatedJumpHeld;
+    private bool previousAutomatedJumpHeld;
+    private int blueCrystalCount;
+    private int blackBigCrystalCount;
 
-    public TextMeshProUGUI blueCrystalCountDisplay;
-    public TextMeshProUGUI blackBigCrystalCountDisplay;
+    public bool IsGrounded { get; private set; }
+    public int BlueCrystalCount => blueCrystalCount;
+    public int BlackBigCrystalCount => blackBigCrystalCount;
 
-    // Update is called once per frame
-    void Update()
+    private void Awake()
     {
-        
-        input = Input.GetAxisRaw("Horizontal");
-        
-        
-        if(input < 0)
+        heroRb ??= GetComponent<Rigidbody2D>();
+        spriteRenderer ??= GetComponent<SpriteRenderer>();
+        animator ??= GetComponent<Animator>();
+        UpdateCollectibleDisplays();
+    }
+
+    private void Update()
+    {
+        ReadInput(out bool jumpPressed, out bool jumpHeld, out bool jumpReleased);
+
+        if (horizontalInput < 0f)
         {
-            spriteRenderer.flipX=true;
+            spriteRenderer.flipX = true;
         }
-        else if (input>0)
+        else if (horizontalInput > 0f)
         {
-            spriteRenderer.flipX=false;
+            spriteRenderer.flipX = false;
         }
-        isGrounded = Physics2D.OverlapCircle(feetPosition.position, groundCheckCircle, groundLayer);
-        
-        if(isGrounded == true && Input.GetButtonDown("Jump"))
+
+        IsGrounded = feetPosition != null &&
+            Physics2D.OverlapCircle(feetPosition.position, groundCheckCircle, groundLayer);
+
+        if (IsGrounded && jumpPressed)
         {
             isJumping = true;
-            heroRb.linearVelocityY =  jumpForce;
+            heroRb.linearVelocityY = jumpForce;
             jumpTimeCounter = jumpTime;
         }
-        if(Input.GetButton("Jump") && isJumping)
+
+        if (jumpHeld && isJumping)
         {
-            if(jumpTimeCounter > 0)
+            if (jumpTimeCounter > 0f)
             {
                 heroRb.linearVelocityY = jumpForce;
                 jumpTimeCounter -= Time.deltaTime;
@@ -60,36 +78,94 @@ public class HeroMovement : MonoBehaviour
                 isJumping = false;
             }
         }
-        if(Input.GetButtonUp("Jump"))
+
+        if (jumpReleased)
         {
             isJumping = false;
         }
-        animator.SetFloat("Speed", Mathf.Abs(input));
+
+        animator.SetFloat("Speed", Mathf.Abs(horizontalInput));
         animator.SetFloat("VerticalVelocity", heroRb.linearVelocityY);
-        animator.SetBool("IsGrounded", isGrounded);
+        animator.SetBool("IsGrounded", IsGrounded);
     }
 
-    void FixedUpdate()
+    private void FixedUpdate()
     {
-       heroRb.linearVelocityX = input * speed; 
+        heroRb.linearVelocityX = horizontalInput * speed;
     }
 
-    void OnTriggerEnter2D(Collider2D collider)
+    public void EnableAutomatedControl(bool enabled)
     {
-        if(collider.gameObject.tag == "BlueCrystal")
+        automatedControlEnabled = enabled;
+        automatedHorizontalInput = 0f;
+        automatedJumpHeld = false;
+        previousAutomatedJumpHeld = false;
+    }
+
+    public void SetAutomatedInput(float horizontal, bool jumpHeld)
+    {
+        automatedHorizontalInput = Mathf.Clamp(horizontal, -1f, 1f);
+        automatedJumpHeld = jumpHeld;
+    }
+
+    private void ReadInput(out bool jumpPressed, out bool jumpHeld, out bool jumpReleased)
+    {
+        if (automatedControlEnabled)
+        {
+            horizontalInput = automatedHorizontalInput;
+            jumpHeld = automatedJumpHeld;
+            jumpPressed = automatedJumpHeld && !previousAutomatedJumpHeld;
+            jumpReleased = !automatedJumpHeld && previousAutomatedJumpHeld;
+            previousAutomatedJumpHeld = automatedJumpHeld;
+            return;
+        }
+
+        horizontalInput = Input.GetAxisRaw("Horizontal");
+        jumpPressed = Input.GetButtonDown("Jump");
+        jumpHeld = Input.GetButton("Jump");
+        jumpReleased = Input.GetButtonUp("Jump");
+    }
+
+    private void OnTriggerEnter2D(Collider2D other)
+    {
+        if (other.CompareTag("BlueCrystal"))
         {
             blueCrystalCount++;
-            blueCrystalCountDisplay.text = blueCrystalCount.ToString();
-            Debug.Log("Blue Crytsal Count = " + blueCrystalCount.ToString());
-            Destroy(collider.gameObject);
         }
-        else if ( collider.gameObject.tag == "BlackBigCrystal")
+        else if (other.CompareTag("BlackBigCrystal"))
         {
             blackBigCrystalCount++;
-            blackBigCrystalCountDisplay.text = blackBigCrystalCount.ToString();
-            Debug.Log("Black Big Crytsal Count = " + blackBigCrystalCount.ToString());
-            Destroy(collider.gameObject);
         }
-        
+        else
+        {
+            return;
+        }
+
+        UpdateCollectibleDisplays();
+        Destroy(other.gameObject);
+    }
+
+    private void UpdateCollectibleDisplays()
+    {
+        if (blueCrystalCountDisplay != null)
+        {
+            blueCrystalCountDisplay.text = blueCrystalCount.ToString();
+        }
+
+        if (blackBigCrystalCountDisplay != null)
+        {
+            blackBigCrystalCountDisplay.text = blackBigCrystalCount.ToString();
+        }
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        if (feetPosition == null)
+        {
+            return;
+        }
+
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(feetPosition.position, groundCheckCircle);
     }
 }
