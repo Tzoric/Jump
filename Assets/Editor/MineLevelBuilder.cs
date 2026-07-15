@@ -123,7 +123,7 @@ public static class MineLevelBuilder
         for (int i = 0; i < positions.Length; i++)
         {
             CreatePlatform(route, platform, $"Bronze Rock Ledge {i + 1:00}", positions[i], i == 10 ? 7f : 5.5f, 0f);
-            CreateWaypoint(root, positions[i] + Vector2.up * 1.1f, i + 1);
+            CreateWaypoint(root, positions[i] + Vector2.up * 1.5f, i + 1);
         }
         CreateDoorWithFoundation(root, platform, door, new Vector2(-3.8f, 29.45f));
         CreateWallsAndPit(root, new Vector2(0f, 12.5f), 22f, 43f);
