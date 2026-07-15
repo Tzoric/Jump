@@ -22,17 +22,36 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
 
         PlayerHealth health = FindFirstObjectByType<PlayerHealth>();
         PlayerWeight weight = FindFirstObjectByType<PlayerWeight>();
-        FallingSpike spike = FindFirstObjectByType<FallingSpike>();
-        Rigidbody2D playerBody = health == null ? null : health.GetComponent<Rigidbody2D>();
+        HeroMovement movement = FindFirstObjectByType<HeroMovement>();
+        LevelExitDoor exitDoor = FindFirstObjectByType<LevelExitDoor>();
+        AutomatedPlaytestWaypoint[] waypoints =
+            FindObjectsByType<AutomatedPlaytestWaypoint>(FindObjectsSortMode.None);
 
-        bool referencesPresent = health != null && weight != null && spike != null && playerBody != null;
+        bool referencesPresent = health != null && weight != null && movement != null && exitDoor != null &&
+            waypoints.Length == 11;
         bool damagePassed = false;
         bool healingPassed = false;
+        bool automatedJumpPassed = false;
         bool weightPassed = false;
-        bool spikePassed = false;
+        bool exitConfiguredPassed = false;
 
         if (referencesPresent)
         {
+            yield return null;
+            float startingY = movement.transform.position.y;
+            float highestY = startingY;
+            movement.EnableAutomatedControl(true);
+            movement.SetAutomatedInput(0f, true);
+            float jumpTestEnds = Time.time + 0.3f;
+            while (Time.time < jumpTestEnds)
+            {
+                highestY = Mathf.Max(highestY, movement.transform.position.y);
+                yield return null;
+            }
+            movement.SetAutomatedInput(0f, false);
+            movement.EnableAutomatedControl(false);
+            automatedJumpPassed = highestY > startingY + 0.75f;
+
             int startingHealth = health.CurrentHealth;
             damagePassed = health.TakeDamage(1, health.transform.position + Vector3.left) &&
                 health.CurrentHealth == startingHealth - 1;
@@ -46,13 +65,12 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             weight.SetCarriedWeight(0f);
             weight.ResetPowerUpModifiers();
 
-            health.transform.position = spike.transform.position + Vector3.down * 3f;
-            playerBody.linearVelocity = Vector2.zero;
-            yield return new WaitForSeconds(0.6f);
-            spikePassed = spike.IsTriggered;
+            exitConfiguredPassed = exitDoor.DestinationScene == "DungeonOverview" &&
+                exitDoor.GetComponent<Collider2D>().isTrigger;
         }
 
-        bool passed = referencesPresent && damagePassed && healingPassed && weightPassed && spikePassed;
+        bool passed = referencesPresent && automatedJumpPassed && damagePassed && healingPassed && weightPassed &&
+            exitConfiguredPassed;
         string reportPath = ReadArgument("-mechanicsReport") ??
             Path.Combine(Application.dataPath, "..", "Logs", "MineMechanicsSmokeTest.json");
         var result = new SmokeResult
@@ -61,8 +79,10 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             referencesPresent = referencesPresent,
             damagePassed = damagePassed,
             healingPassed = healingPassed,
+            automatedJumpPassed = automatedJumpPassed,
             weightCalculationPassed = weightPassed,
-            fallingSpikeTriggered = spikePassed
+            exitDoorConfigured = exitConfiguredPassed,
+            waypointCount = waypoints.Length
         };
 
         string directory = Path.GetDirectoryName(reportPath);
@@ -95,7 +115,9 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         public bool referencesPresent;
         public bool damagePassed;
         public bool healingPassed;
+        public bool automatedJumpPassed;
         public bool weightCalculationPassed;
-        public bool fallingSpikeTriggered;
+        public bool exitDoorConfigured;
+        public int waypointCount;
     }
 }
