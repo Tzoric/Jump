@@ -2,509 +2,378 @@
 
 ## Game Design Document
 
-**Status:** Early design draft  
-**Version:** 0.3  
-**Last updated:** July 14, 2026  
+**Status:** First dungeon production design
+**Version:** 0.4a
+**Last updated:** July 14, 2026
 **Working title:** Jump
 
-This document organizes the ideas from `Jump game outline.docx` into a format that can grow with the project. Items marked **Decision needed** are intentionally unresolved. Items marked **Proposed** are recommendations and can be changed without contradicting the original outline.
+This document is the current design authority for the playable Bronze Mines chapter. Later-dungeon ideas remain provisional unless they are explicitly marked confirmed.
 
 ---
 
 ## 1. Game vision
 
-### One-sentence concept
-
-Jump is a platforming game in which the player travels through increasingly difficult themed dungeons, collects gems, survives environmental hazards, and uses upgrades and power-ups to reach each level's goal.
+Jump is a platforming game in which a little miner travels through increasingly difficult mine dungeons, collects valuable crystals, survives environmental hazards, opens hidden-key chests, and spends rewards on additional survival resources.
 
 ### Intended player experience
 
-- Movement should be easy to learn and satisfying to master.
-- New mechanics should be taught safely before they are combined into difficult challenges.
-- Levels should become more demanding without becoming tedious.
-- Gems, unlocks, upgrades, skins, and new locations should give players reasons to continue.
-- A failed attempt should teach the player something and make another attempt feel worthwhile.
+- Movement is easy to learn and satisfying to master.
+- Each level teaches or escalates a readable traversal challenge.
+- Difficulty rises through longer routes, tighter timing, hazards, and optional reward paths rather than repetition alone.
+- Valuable collectibles tempt the player into clearly optional risks.
+- A failed attempt teaches the player something and makes another attempt feel worthwhile.
 
 ### Project vocabulary
 
-- **Dungeon:** A themed world containing a large collection of levels. Examples include the Mines, the Surface, and the Moon.
-- **Level:** One playable stage within a dungeon.
-- **Gem:** The main collectible and current working currency.
-- **Power-up:** A temporary or consumable effect such as increased speed, a higher jump, flight, or reduced weight.
-- **Upgrade:** A longer-lasting improvement purchased or earned by the player.
+- **Dungeon:** A themed world or chapter. Dungeon 1 is the Bronze Mines; Dungeon 2 is the Silver Mines.
+- **World overview:** The level-selection scene for a dungeon. Every visible mineshaft represents one playable level.
+- **Level:** One playable mine tunnel within a dungeon.
+- **Crystal:** The collectible currency. Crystal colors identify their green-crystal value.
+- **Life:** One complete level attempt. A new save begins with three lives.
+- **Heart:** One point of health during a level. The base maximum is five hearts.
+- **Bronze key:** A level-specific collectible used to open that same level's reward chest.
+- **Silver key:** A special progression key hidden on a difficult route in Level 10 and required to enter Level 11.
 
 ---
 
-## 2. Player journey
+## 2. Core game flow
 
-### Game flow
+1. Start at the main screen or dungeon overview.
+2. Choose one of the eleven mineshafts on the Bronze Mines overview.
+3. Enter an unlocked level.
+4. Traverse the tunnel, avoid hazards, and collect optional crystals and keys.
+5. Optionally use the level's bronze key to open its reward chest.
+6. Reach the supported exit door.
+7. Watch the miner visibly walk through the door, complete the level, and return to the overview.
+8. Spend crystals in the overview shop or continue to the next unlocked shaft.
 
-1. Start the game.
-2. View the home screen.
-3. Select a dungeon.
-4. Select an unlocked level.
-5. Play the level: move, jump, avoid hazards, and collect gems.
-6. Reach the level goal, possibly while carrying or collecting a key.
-7. Add collected gems to the player's balance.
-8. Unlock the next level, purchase something, or replay for a better result.
-
-### Core gameplay loop
-
-**Choose a level → traverse platforms → avoid hazards → collect rewards → complete the goal → improve or unlock → attempt a harder level**
+Normal levels unlock sequentially. Level 11 requires both completion of Level 10 and possession of the silver key.
 
 ### Controls
 
-| Action | Keyboard input | Status |
+| Action | Input | Notes |
 |---|---|---|
-| Move left or right | Arrow keys or `A` / `D` | Confirmed |
-| Jump | Current project jump input | Implemented; final key should be documented in-game |
-| Open or close inventory | `E` | Planned |
-| Pause | **Decision needed** | Not specified |
-| Use selected item | **Decision needed** | Not specified |
+| Move | Arrow keys or `A` / `D` | Base horizontal speed is 7.5 units per second. |
+| Jump | Current project jump input | Jump force is 12 with a 0.24-second held-jump window. |
+| Use health potion | `H` | Consumes one potion and restores one heart. |
+| Open inventory | `E` | Reserved for the broader inventory interface. |
 
 ---
 
-## 3. Level rules
+## 3. Player presentation and movement
 
-### Completion
+### Miner character
 
-The long-term level goal is to reach the end of the stage. A key may be required before the exit opens.
+- The playable character is a completely redrawn little miner, approximately 125% of the former character's size.
+- The miner wears a dark mining outfit with leather and bronze details.
+- A silver mining helmet is integrated into the character sprite and has a small yellow lamp on its front.
+- The mining pick is smaller than the original accessory, stays aligned to the hand, and moves with the hand rather than floating beside the body.
+- The character, equipment, and animation must match the detail and polish of the cave backgrounds.
 
-**Decision needed:** Decide whether every level requires a key, only selected puzzle levels require one, or the key is unrelated to level completion.
+### Persistent hero and outfit architecture
 
-The current build completes a level when the grounded miner reaches its exit. Control is briefly locked while the miner visibly walks into the doorway, then the overview loads. Required crystals are not an exit condition. Every ordinary exit must have a solid platform made from the level's rock and tier material directly underneath it unless the level brief explicitly permits an unsupported door.
+- The same recognizable hero identity, face, body proportions, and animation timing persist throughout the game.
+- Dungeon themes change a swappable outfit profile rather than replacing the hero. Initial profiles include the Bronze Miner, a construction worker, and an astronaut.
+- Each outfit supplies compatible directional sprite sets while preserving the same silhouette, attachment points, collider assumptions, and gameplay scale.
+- Hand-held tools may use separate hand-rigged visuals so a pickaxe or later tool can follow the hand without being baked into every body frame.
+- The required animation set is side walk, side run, side jump/rise, apex, fall, land, front-facing walk toward the camera, and back-facing walk away from the camera.
+- Side animations mirror for left and right unless an outfit or tool requires dedicated directional art.
+- Door-entry transitions use the back-facing walk-away animation so the hero visibly walks into the doorway. Front-facing walking supports entrances, reveals, and movement toward the camera.
 
-### Health and failure
+### Movement tuning
 
-- The player has health and can take damage from hazards.
-- Falling out of the level causes damage, death, or a respawn.
-- After death, the player restarts from the beginning or the latest checkpoint.
-- The outline proposes “3–5 HP per level.” The exact meaning must be confirmed.
-
-**Resolved in version 0.3:** The player has five hearts per level and three persistent starting lives.
-
-### Difficulty principles
-
-- Introduce one major idea at a time.
-- Demonstrate a hazard before requiring a difficult reaction to it.
-- Give the player a safe landing area after demanding jumps.
-- Increase challenge by combining known mechanics, not only by making jumps longer.
-- Keep early levels short and replayable.
-- Avoid long sections that force the player to repeat easy actions after one difficult obstacle.
-
----
-
-## 4. Player systems
-
-### Health
-
-The implemented health system uses five base hearts, one-heart hazard damage, temporary invulnerability, potion healing, three starting lives, death, respawning, and permanent heart-capacity upgrades.
-
-### Inventory
-
-Pressing `E` is intended to open the inventory. The inventory may eventually hold consumables, keys, equipment, and other carried objects.
-
-Planned inventory rules:
-
-- Each carried object may add weight.
-- Heavy inventory causes weighted platforms to break faster.
-- A lightweight power-up reduces the player's effective weight.
-- A low-gravity power-up reduces the effective force placed on a weighted platform.
-- Inventory weight and temporary power-up modifiers should remain separate so effects are easy to balance.
-
-### Power-ups and purchasable items
-
-Ideas from the original outline:
-
-- Health potion
-- Apple or another healing food
-- Speed boost
-- Flight
-- High jump
-
-Additional power-ups already supported by the current design direction:
-
-- Lightweight effect
-- Low-gravity effect
-
-For every power-up, define its duration, strength, inventory weight, price or unlock method, stacking rule, and whether it can be used during a level.
-
-### Cosmetics
-
-Skins may be purchased with earned currency. Cosmetics should not affect level reachability or player power.
+- Base side movement is 7.5 units per second, 75% of the original speed. A future speed power-up may restore or exceed the old speed.
+- Gravity scale is 5.4, approximately 60% of the former value, so ascent and falling are readable beside the slower horizontal movement.
+- Jump force is 12. This is slightly higher than the first slowed-jump pass while remaining proportionate to the 7.5 side speed.
+- The held-jump window is 0.24 seconds.
+- Movement values must be playtested against every required route; normal completion must never require a speed power-up.
 
 ---
 
-## 5. Economy and progression
+## 4. Health, lives, damage, and failure
 
-### Currency plan
-
-| Currency or item | Earned by | Used for | Status |
-|---|---|---|---|
-| Gems | Collecting them in levels | Upgrades, skins, optional dungeon unlocks, and possibly level skips | Confirmed concept |
-| Keys | **Decision needed** | Level exits, level skips, or both | Ambiguous in the outline |
-| Coins | **Decision needed** | Possibly shop purchases | Mentioned once; role not defined |
-| Real-world currency | Optional store purchase | Gems or coins | Future concept; platform and audience rules must be reviewed first |
-
-### Gem values
-
-Green crystals are introduced in Dungeon 1, Level 2 and save immediately as the current shop currency. Later levels may contain crystals worth 5, 10, 15, or 20. Different values should have clearly different visuals.
-
-### Unlocking content
-
-- Normal route: complete levels and dungeons in order.
-- Optional route: spend earned gems to unlock a later dungeon without completing every earlier dungeon.
-- Possible skip: spend a resource to bypass an individual level.
-
-**Decision needed:** The sentence “Key can pay gems to have a skip on any level” could mean that the player pays gems to skip, or that keys are skip tokens. Confirm which resource should be used.
-
-### Scope warning
-
-The target of 100–200 levels per dungeon is a long-term idea. Before committing to that number, complete and measure the time needed to build, test, and polish the first 10–20 levels. Reusable level pieces and reliable automated tests will be important at this scale.
+- The miner starts every level with five full hearts, plus any future permanent heart-capacity upgrades.
+- A spike hit removes exactly one heart and grants brief damage invulnerability.
+- A health potion restores exactly one missing heart and cannot exceed the current maximum.
+- A new save begins with three lives. A life represents one complete attempt, so the starting balance provides three attempts rather than three respawns after the first attempt.
+- Reaching zero hearts consumes one life. If another life remains, restart the level from its beginning; otherwise return to the overview.
+- Falling into a bottomless pit is lethal, consumes the current attempt, and follows the normal life/respawn flow.
+- Level 2's reset ramp is not a bottomless pit. Falling from its upper route makes the player slide back to the ramp's bottom and restart the traversal without spending a life unless spikes reduce health to zero.
 
 ---
 
-## 6. Dungeon roadmap
+## 5. Universal level and art rules
 
-The current location ideas form a journey from underground to space.
+### Doors and completion
 
-| Order | Dungeon concept | Theme | Status |
+- The exit is reached by a grounded player at the end of the intended route.
+- Touching the exit does not instantly hide or teleport the character.
+- Control is briefly locked and a short cutscene visibly walks the miner into the doorway before the overview loads.
+- Every ordinary door must have a solid platform directly beneath it. A floating or unsupported door is allowed only when a level brief explicitly calls for one.
+
+### Platforms
+
+- Mine platforms are formed from irregular chunks of the level's dark rock.
+- Bronze veins run through and between the rocks. They should read as mineral veins, not as a flat rectangular bronze frame.
+- Rock faces need enough highlights, shadows, and chipped edges to match the surrounding environment.
+- Platforms remain thinner vertically than the first prototype while preserving clear collision and safe footing.
+- Later dungeons replace the vein material to match their identity; Dungeon 2 uses silver.
+
+### Background and camera
+
+- The world overview always contains an active rendering camera; it must never display a `No cameras rendering` message.
+- The level camera follows the miner and frames upcoming landings and hazards.
+- Background composition and support art follow each tunnel's direction: vertical shafts emphasize height, angled shafts rise diagonally, and horizontal tunnels emphasize lateral depth.
+- Level 2's background is angled to support its rising ramp composition even though its main upper platforms are horizontal.
+
+### Difficulty and fairness
+
+- Present hazards before demanding a difficult reaction.
+- Give the player a safe landing or readable recovery opportunity after demanding jumps.
+- Optional rewards may be very difficult; the required completion route must remain achievable with default movement and no purchased item.
+- Avoid blind jumps, unavoidable damage, and permanent traps.
+
+---
+
+## 6. Bronze Mines progression
+
+Dungeon 1 is the **Bronze Mines** and contains eleven levels, one for each tunnel shown on its world overview. All eleven shafts are level-select nodes rather than decorative `coming soon` entrances.
+
+The principal tunnel direction alternates vertical, angled, and horizontal. Level 2 is classified as the angled entry in the cycle because of its reset ramp and angled composition, while its required upper route is built from horizontal platforms.
+
+| Level | Working name | Direction | Primary challenge |
 |---:|---|---|---|
-| 1 | The Mines | Underground tunnels, machinery, crystals, unstable structures | In development |
-| 2 | The Surface | Open terrain and the first outdoor environment | Concept |
-| 3 | The Atmosphere | Wind, clouds, height, and aerial movement | Concept |
-| 4 | The Moon | Low gravity, craters, and space hazards | Concept |
-| 5+ | The Planets | A distinct mechanic and visual identity for each selected planet | Concept |
-| Later | The Sun | Extreme heat and high-risk endgame challenges | Concept |
-| Expansion | Another Galaxy | New worlds after the main journey | Possible future expansion |
+| 1 | Bronze Shaft | Vertical | Short tutorial climb, basic movement, camera tracking, and supported door entry. |
+| 2 | Sliding Ascent | Angled hybrid | Horizontal upper platforms separated by gaps over a steep spike-covered reset ramp. |
+| 3 | Chasm Run | Horizontal | A longer lateral route that introduces bottomless gaps. |
+| 4 | Copper Column | Vertical | A taller climb with less generous spacing and more hazards. |
+| 5 | Crooked Incline | Angled | A longer diagonal ascent with increasingly demanding recovery. |
+| 6 | Broken Rail | Horizontal | Longer pit crossings and more hazardous optional routes. |
+| 7 | Furnace Rise | Vertical | An extended vertical endurance climb with combined hazards. |
+| 8 | Razor Ascent | Angled | A long diagonal route with tighter spike timing. |
+| 9 | Abyss Run | Horizontal | The hardest bottomless-pit tunnel before the key challenge. |
+| 10 | Key Vault | Vertical | A long, difficult climb containing the hidden silver key on a hard optional path. |
+| 11 | Treasure Vein | Angled | A silver-key-gated final tunnel with the chapter's hardest optional crystal routes. |
 
-**Proposed:** Treat “dungeon” as the game's internal term for a world or chapter, even when the location is outdoors or in space. The player-facing label could be “World” if that feels more natural later.
+### Length and challenge curve
 
----
+- Each level after Level 2 is longer and more difficult than the preceding level.
+- Vertical levels increase climbing height and landing difficulty.
+- Angled levels increase route length, slide risk, and spike combinations.
+- Horizontal levels use separated platforms over bottomless pits; falling into a pit is lethal.
+- Reused mechanics are combined only after the player has encountered them in a readable form.
+- Main-route checkpoints may be added when playtesting shows that repeated early sections become tedious, but they must not bypass keys or one-time chest state.
 
-## 7. Dungeon 1 — The Mines
+### Level 1 - Bronze Shaft
 
-### Dungeon identity
+- Teach slower movement, jumping, camera tracking, and visible exit entry on wide stationary landings.
+- Keep the required route free of damage hazards.
+- Hide the level's bronze key and place its reward chest where the system can be learned without blocking completion.
 
-**Fantasy:** Begin deep underground and escape through a dangerous working mine while learning the game's core movement and survival systems.
+### Level 2 - Sliding Ascent
 
-**Visual ideas:** Dark rock, timber supports, mine carts, rails, lanterns, crystals, ropes, warning signs, dust, and machinery.
+- The required route moves laterally across thin, flat, horizontal platforms separated by clear gaps.
+- A continuous steep ramp runs underneath the upper route and slopes back toward the level start/bottom.
+- Falling through an upper gap lands the miner on the ramp. Gravity carries the miner to the bottom, forcing the upper-platform route to be attempted again.
+- Spike groups project from the ramp. The miner must jump while sliding to avoid them; every hit costs one heart.
+- The ramp is a recoverable reset route, not a bottomless death zone.
+- Green crystals introduce collection and the overview shop.
+- The cave background, rails, and visual flow are angled to match the ramp.
 
-**Core mechanics:**
+### Horizontal tunnel rule
 
-- Basic movement and jumping
-- Health, damage, death, and respawning
-- Gems
-- Moving platforms
-- Falling ceiling spikes with a visible warning
-- Weighted breakable platforms
-- Pits and fall hazards
-- Inventory weight and gravity modifiers in later levels
+Levels 3, 6, and 9 contain bottomless pits beneath separated horizontal platforms. Pit edges must be visually obvious, camera framing must reveal the intended landing, and the required jump distances must fit default movement.
 
-### Material progression
+### Level 10 silver-key secret
 
-The material visible in mine walls and related platform trim changes as the player advances. Use proportional bands so this progression still works if the final dungeon contains more or fewer than 100 levels.
+- The one silver key is hidden in Level 10, which satisfies the requirement that it be hidden in another Bronze Mines level before Level 11.
+- Reaching it is deliberately difficult and optional for ordinary Level 10 completion.
+- Collection persists after leaving the level, including after a later death.
+- The overview clearly distinguishes `complete Level 10` from `find the silver key` when explaining why Level 11 is locked.
 
-| Mines progress | Example for 100 levels | Wall material | Visual purpose |
-|---|---:|---|---|
-| First 20% | 1–20 | Bronze and copper | Establish the early working mine |
-| 21–40% | 21–40 | Silver | Show that the player has reached richer, cooler-colored depths |
-| 41–60% | 41–60 | Gold | Mark the advanced middle of the dungeon |
-| 61–80% | 61–80 | Ruby and sapphire | Create a high-value red-and-blue crystal region |
-| Final 20% | 81–100 | Diamond | Signal the most difficult and prestigious Mines levels |
+### Level 11 - Treasure Vein
 
-Level 1 is part of the bronze tier. Material tiers are environmental progression markers; their relationship to collectible gem values can be balanced separately.
-
-### Difficulty arc
-
-| Levels | Main purpose | Planned content |
-|---|---|---|
-| 1 | Tutorial and first completion | A simple vertical climb using only stationary platforms, camera tracking, and the exit door |
-| 2 | Introduce rewards | Teach gem collection and show how collected gems enter the player's balance |
-| 3–5 | Practice | Slightly longer routes using one mechanic at a time |
-| 6–10 | Combine basics | Mix familiar hazards while keeping levels concise |
-| 11–15 | Moving-platform focus | More demanding moving platforms and gems worth 5, 10, 15, and 20 |
-| 16–20 | First mastery test | Combine moving platforms, spikes, breakable platforms, weight, and limited health |
-| 21+ | Future acts | Add mine-specific mechanics only after Levels 1–20 are proven fun and achievable |
-
-**Confirmed Level 1 scope:** Moving platforms, falling spikes, and weighted breakable platforms are reserved for later levels. Level 1 teaches basic movement and completion without those hazards.
-
-### Level 1 — Bronze Shaft
-
-**Purpose:** A short vertical tutorial that introduces the player to the Mines and teaches the complete level flow.
-
-**Difficulty:** 1/5  
-**Target first-attempt time:** 1–3 minutes  
-**Primary objective:** Climb the shaft, land on the final platform, and walk through the mine exit door.  
-**Completion result:** Return to the Mines dungeon overview.
-
-#### What the player learns
-
-1. Move left and right.
-2. Jump between stationary platforms.
-3. Follow the camera upward through a vertical level.
-4. Read the bronze wall deposits as the current Mines material tier.
-5. Recognize the exit door as the level goal.
-6. Walk through the door to return to the dungeon overview.
-
-#### Level-design rules
-
-- Use wide, stationary platforms in a clear alternating zig-zag.
-- Keep every next landing visible and avoid placing a ledge directly over the takeoff position.
-- Require a stable landing on the final platform before door entry.
-- Keep the route free of damage hazards so failure comes only from missing a jump.
-- Do not require an inventory or power-up to finish the level.
-- Do not place required gems because gem collection is taught in Level 2.
-
-#### Playtest acceptance criteria
-
-- The level can be completed from the default spawn with the default player abilities.
-- No required jump depends on a frame-perfect input.
-- The player cannot become permanently trapped.
-- Missing the route eventually returns the player to the starting floor or respawns them from the pit.
-- The exit loads the dungeon overview only while the player is grounded.
-- The automated virtual controller completes all 11 authored landings and reaches the exit door.
-
-### Level 2 — First Pay Dirt
-
-**Purpose:** Introduce gems without adding another major mechanic.
-
-- Place the first gem directly on the required route.
-- Use a short visual or interface response to show that it was collected.
-- Show the updated gem balance after level completion.
-- Place optional gems on slightly more difficult but safe routes.
-- Do not require spending gems yet.
-
-### Levels 3–10 — Foundation
-
-- Increase level length gradually.
-- Focus each level on one main skill.
-- Reuse known mechanics in new arrangements.
-- Add optional gem routes for confident players.
-- Avoid making levels feel longer only by repeating the same jump.
-- Introduce checkpoints only when levels become long enough to need them.
-
-### Levels 11–20 — Mine machinery
-
-- Make moving platforms the main focus.
-- Introduce multiple gem values with distinct visuals.
-- Combine horizontal and vertical platform movement gradually.
-- Use falling spikes near moving platforms only after each is understood separately.
-- Add breakable-platform routes that change based on carried weight.
-- Balance five-heart difficulty and the three-life economy through playtesting.
+- Level 11 unlocks only after Level 10 is completed and the silver key has been collected.
+- Its required route is the hardest Bronze Mines completion route, but remains possible with default movement.
+- It contains many green crystals plus exactly five blue crystals and one purple crystal.
+- Each blue crystal is worth five green crystals.
+- The single purple crystal is worth twenty green crystals and occupies the level's most difficult optional route.
+- The five blue crystals are also placed on exceptionally difficult optional routes. They are not required to complete the level.
 
 ---
 
-## 8. Shop plan
+## 7. Keys and reward chests
 
-The overview shop sells upgrades and consumables. Current prices are 10 green crystals for an extra life, 5 for a health potion, and 25 for a permanent +1-heart upgrade. Press `H` in a level to consume a potion.
+Every Bronze Mines level contains one hidden bronze key and one reward chest.
 
-### Initial categories
+### Bronze key rules
 
-| Category | Examples | Design rule |
-|---|---|---|
-| Healing | Health potion, apple | Should help recovery without removing all challenge |
-| Movement | Speed boost, high jump, flight | Levels must define whether each item is allowed |
-| Weight and gravity | Lightweight, low gravity | Must interact predictably with weighted platforms |
-| Cosmetics | Player skins | Visual only |
-| Progression | Dungeon unlock or level skip | Price carefully so playing normally remains rewarding |
+- A bronze key belongs to the level in which it is found.
+- It opens only that same level's chest.
+- Collection is saved so leaving or dying does not recreate an already collected key.
+- The bronze key and chest are optional and never block the exit.
 
-### Purchase safety
+### Chest rules
 
-Real-money purchases are a future business decision, not a requirement for the first playable version. Before implementing them, define the target platforms, intended player age, parental controls, refund behavior, save recovery, and applicable storefront policies.
+- A chest remains locked until its same-level bronze key has been collected.
+- Opening consumes the key's use for that chest and permanently records that the chest was opened.
+- A chest can be claimed only once per save; replaying a level cannot farm repeated random rewards.
+- The reward roll is:
 
----
+| Chance | Reward | Value or effect |
+|---:|---|---|
+| 50% | Blue crystal reward | Adds five green-crystal currency. |
+| 45% | Health potion | Adds one potion to inventory. |
+| 5% | Extra life | Adds one life. |
 
-## 9. Production roadmap
-
-### Milestone 1 — Reliable first level
-
-- Finish and polish Level 1.
-- Confirm movement, health, hazards, respawning, and level completion.
-- Add clear tutorial prompts and player feedback.
-- Verify the level with automated and human playtesting.
-
-### Milestone 2 — Progression foundation
-
-- Build Level 2 and introduce gems.
-- Add a saved gem balance.
-- Add a level-exit rule.
-- Add level selection and unlocking.
-- Define checkpoints and completion records.
-
-### Milestone 3 — First Mines chapter
-
-- Build and validate Levels 3–10.
-- Establish reusable mine prefabs and level-building standards.
-- Track completion time, deaths, and common failure points.
-
-### Milestone 4 — Inventory and power-ups
-
-- Add the inventory opened with `E`.
-- Add carried weight.
-- Implement and test one power-up at a time.
-- Show duration and active effects clearly in the interface.
-
-### Milestone 5 — Shop and extended content
-
-- Add an earned-currency shop.
-- Add upgrades and cosmetics.
-- Build Levels 11–20 and rebalance the difficulty curve.
-- Evaluate production time before choosing the final number of levels per dungeon.
+Chest rewards and placed blue crystals both use the same five-green-crystal value.
 
 ---
 
-## 10. Reusable dungeon brief
+## 8. Crystal economy and shop
 
-Copy this section when planning a new dungeon.
+Green-crystal value is the single earned currency used by the current shop. There is no separate coin currency in the Bronze Mines design.
 
-### Identity
+### Crystal values
 
-- **Dungeon number and name:**
-- **One-sentence fantasy:**
-- **Location in the journey:**
-- **Visual style and color palette:**
-- **Music and sound ideas:**
-- **Story purpose:**
-- **Target number of levels:**
+| Crystal | Currency value | Placement rule |
+|---|---:|---|
+| Green | 1 | Common along normal and optional routes. |
+| Blue | 5 | Rare, on difficult optional routes or awarded by a chest. |
+| Purple | 20 | Exceptional secret reward; Level 11 contains one extremely difficult purple crystal. |
 
-### Gameplay
+Collected currency saves immediately.
 
-- **New mechanic introduced:**
-- **Existing mechanics expanded:**
-- **Signature hazards:**
-- **Signature platforms or traversal:**
-- **Dungeon-specific collectible:**
-- **Power-ups introduced or emphasized:**
-- **Inventory or weight interactions:**
-- **Final challenge or boss:**
+### Overview shop
 
-### Progression
+The shop is available from the main/overview screen and displays the player's current crystal, life, potion, and heart information.
 
-- **How the dungeon unlocks:**
-- **Level groups and difficulty curve:**
-- **Expected completion time:**
-- **Rewards for completion:**
-- **Optional challenges:**
+| Item | Price | Effect |
+|---|---:|---|
+| Health potion | 3 green crystals | Adds one potion; using it restores one heart. |
+| Extra life | 25 green crystals | Adds one life. |
+| Heart-capacity upgrade | To be balanced | Permanently increases the maximum hearts available in every level by one. |
 
-### Production notes
+The initial five-heart maximum remains viable without purchases. Upgrade pricing must be set only after the eleven-level balance pass.
 
-- **Required art and animation:**
-- **Required audio:**
-- **Required scripts and systems:**
-- **Reusable prefabs:**
-- **Major risks or unanswered questions:**
+---
+
+## 9. Dungeon roadmap
+
+Material names identify whole dungeons, not successive bands inside Dungeon 1.
+
+| Order | Dungeon | Identity | Status |
+|---:|---|---|---|
+| 1 | Bronze Mines | Bronze-veined dark rock, introductory mine machinery, eleven tunnels | In production |
+| 2 | Silver Mines | Silver-veined rock and a more advanced mining chapter | Confirmed next dungeon |
+| 3 | Gold Mines | Gold material identity and later-difficulty systems | Provisional |
+| 4 | Ruby and Sapphire Mines | Contrasting red/blue crystal regions | Provisional |
+| 5 | Diamond Mines | High-value late-game mining challenges | Provisional |
+| Later | Surface, atmosphere, moon, planets, sun | Journey beyond the mine sequence | Idea parking lot |
+
+Dungeon 2 starts the silver material theme. Silver is not introduced as an environmental tier inside Bronze Mines Levels 1-11.
+
+---
+
+## 10. Production and validation rules
+
+### Required automated coverage
+
+- The overview renders from an active camera and exposes eleven level nodes.
+- Locked nodes cannot load early levels through UI interaction.
+- Levels 3-10 unlock sequentially.
+- Level 11 remains locked without both Level 10 completion and the saved silver key.
+- All eleven exits have foundations and use the visible door-entry transition.
+- All eleven levels contain one bronze key and one persisted chest.
+- Horizontal levels contain lethal bottomless pit zones.
+- Level 2's ramp returns a fallen player toward the start and its spikes deal one heart.
+- Level 11 contains exactly five blue crystals and one purple crystal, with values 5 and 20.
+- A new save has five hearts per level and three total attempts.
+- Shop prices and potion healing match this document.
+- The default miner can complete every required route without a purchase or power-up.
+
+### Human playtest focus
+
+- Confirm that the slower side speed and higher jump feel controlled rather than sluggish.
+- Confirm that the thin platforms remain readable and their collision matches their artwork.
+- Verify the pick stays attached to the moving hand in both facing directions.
+- Verify every outfit preserves the hero's recognizable face, scale, collider alignment, and full directional animation contract.
+- Verify door entry selects the back-facing walk-away animation rather than mirroring a side-walk cycle.
+- Verify that Level 2 falls naturally land on the ramp and cannot bypass the intended restart.
+- Verify that bottomless pit deaths are clear and never resemble recoverable Level 2 falls.
+- Measure whether later levels are difficult because of mastery rather than excessive repetition.
 
 ---
 
 ## 11. Reusable level brief
 
-Copy this section for every new level.
+### Identity
 
-### Level identity
-
-- **Dungeon and level number:**
-- **Level name:**
-- **One-sentence purpose:**
-- **Difficulty (1–5):**
+- **Dungeon and level:**
+- **Name:**
+- **Direction:** Vertical / angled / horizontal / explicit hybrid
+- **Purpose and new challenge:**
 - **Target completion time:**
 
-### Player goal
+### Route
 
-- **Required objective:**
-- **Optional objective:**
-- **Completion condition:**
-- **Failure conditions:**
-- **Checkpoint locations:**
+- **Spawn and opening orientation:**
+- **Required route:**
+- **Recovery route or pit behavior:**
+- **Final challenge:**
+- **Supported exit location:**
+- **Camera and background direction:**
 
-### Gameplay plan
+### Hazards and rewards
 
-- **Mechanic introduced:**
-- **Mechanics practiced:**
-- **Mechanics combined or mastered:**
-- **Required player abilities:**
-- **Allowed or required power-ups:**
-- **Expected inventory weight:**
-- **Health or lives available:**
+- **Hazards and damage:**
+- **Green, blue, and purple crystal placements:**
+- **Bronze key hiding place:**
+- **Same-level chest location:**
+- **Special key or secret:**
 
-### Level sequence
+### Acceptance checklist
 
-1. **Opening and orientation:**
-2. **Safe teaching moment:**
-3. **First real test:**
-4. **Combination or escalation:**
-5. **Rest or reward moment:**
-6. **Final challenge:**
-7. **Exit and results:**
-
-### Content
-
-- **Platforms:**
-- **Hazards:**
-- **Enemies:**
-- **Required collectibles:**
-- **Optional gems and values:**
-- **Secrets:**
-- **Tutorial messages:**
-- **Visual or audio landmarks:**
-
-### Playtest checklist
-
-- [ ] The default character can complete the level without a purchased item.
+- [ ] Default movement can complete the required route.
 - [ ] Required jumps have an appropriate margin for the target difficulty.
-- [ ] Hazards are communicated before they cause unavoidable damage.
+- [ ] Hazards are visible before they can cause unavoidable damage.
 - [ ] The player cannot become permanently trapped.
-- [ ] Checkpoints and resets restore every required object correctly.
-- [ ] Optional rewards do not look required.
-- [ ] The virtual controller test has a clear route and pass condition.
-- [ ] Completion time and deaths are recorded.
-- [ ] Known problems and balance changes are documented.
+- [ ] Horizontal pits are unmistakably lethal; recoverable ramps are unmistakably recoverable.
+- [ ] The bronze key and chest are optional, persisted, and belong to this level.
+- [ ] The exit has a platform and plays the walk-through cutscene.
+- [ ] Crystal colors and values match the economy table.
+- [ ] Automated waypoints cover the intended route.
 
 ---
 
 ## 12. Open design decisions
 
-1. Does a level end by reaching an exit, collecting a key, collecting all required crystals, or a combination of these?
-2. Are keys level objectives, skip tokens, or both?
-3. Does skipping a level cost gems, a key, or another resource?
-4. How quickly should heart upgrades and extra lives increase in price after repeated purchases?
-5. Is “coin” a separate currency from gems, or should the game use only gems?
-6. Which exact level should first introduce moving platforms within the planned Levels 11–15 machinery section?
-7. What key should the player press to jump, pause, and use an inventory item?
-8. How many levels should the first dungeon contain after the first 20 are measured and tested?
-9. Which planets should receive their own dungeons, and in what order?
-10. What is the game's target platform and intended player age?
+1. What should the permanent +1-heart upgrade cost after the eleven-level balance pass?
+2. Should later heart upgrades use a flat or increasing price?
+3. Which new traversal mechanic should distinguish the Silver Mines from the Bronze Mines?
+4. Should later dungeons also contain eleven levels, or use a different tunnel count?
+5. What are the final pause, inventory, and input-remapping controls?
+6. Which platforms and intended player age should guide accessibility and storefront decisions?
 
 ---
 
 ## 13. Idea parking lot
 
-These ideas are intentionally saved for later so they are not lost or implemented too early.
-
-- A dungeon for each selected planet
-- The Sun as a late-game dungeon
-- A different galaxy as an expansion
-- Real-money gem or coin purchases
-- Flight power-up
-- Skippable levels
-- Hundreds of levels per dungeon
+- Speed, high-jump, flight, lightweight, and low-gravity power-ups
+- Moving platforms and weighted breakable platforms in later content
+- Cosmetics and miner skins
+- Optional level skips after their resource and pricing are designed
+- Surface, atmosphere, moon, planet, sun, and another-galaxy chapters
+- Real-money purchases, subject to platform, age, save-recovery, and refund requirements
 
 ---
 
 ## 14. Change log
 
-### Implemented rules in version 0.3
-
-- Horizontal movement is 75% of its original speed; jump force is about 73% and gravity is 60% of their original values so side and vertical motion read together without making authored ledges unreachable.
-- The miner is 125% of the former size and wears a miner helmet while carrying a pickaxe.
-- Players have five base hearts and start a new save with three lives. A spike hit costs one heart. Shop upgrades may add hearts.
-- Level 2, **Sliding Ascent**, travels up and right across connected 22-degree ramps. Falling slides the player toward the bottom. Four spike groups and six collectible green crystals teach hazards and currency.
-- Each overview mineshaft is a level node. Levels 1 and 2 are playable and shafts 3–5 are represented as locked future levels.
-- Platforms visually combine the level's rock with bronze binding in the current material tier.
-- The overview provides an earned-currency shop for extra lives, potions, and heart upgrades.
-
 | Version | Date | Change |
 |---|---|---|
-| 0.3 | July 14, 2026 | Added five-heart/three-life rules, green crystals and shop prices, Sliding Ascent Level 2, slower movement, miner presentation, visible door entry, supported-door standards, and rock/bronze platform art. |
-| 0.2 | July 14, 2026 | Rebuilt Level 1 as Bronze Shaft, made the exit door the completion rule, added the dungeon overview flow, and defined bronze-to-diamond Mines material tiers. |
-| 0.1 | July 14, 2026 | Organized the original Word outline, incorporated the current Mines mechanics, and added reusable dungeon and level briefs. |
+| 0.4a | July 14, 2026 | Defined a persistent hero identity, swappable dungeon outfit profiles, hand-rigged tools, and the complete side/front/back animation contract used by gameplay and door entry. |
+| 0.4 | July 14, 2026 | Defined all eleven Bronze Mines tunnels and their alternating directions; rebuilt Level 2's design around horizontal gaps above an angled spike ramp; added bottomless horizontal pits, bronze keys and one-time chests, the Level 10 silver key and Level 11 gate, exact crystal values and Level 11 rewards, revised shop prices, the redrawn miner and hand-held pick, thinner bronze-veined rock platforms, and the confirmed Silver Mines as Dungeon 2. |
+| 0.3 | July 14, 2026 | Added five-heart/three-life rules, green crystals, the overview shop, slower movement, visible door entry, supported-door standards, and the initial miner presentation. |
+| 0.2 | July 14, 2026 | Rebuilt Level 1 as Bronze Shaft, made the exit door the completion rule, and added the dungeon overview flow. |
+| 0.1 | July 14, 2026 | Organized the original outline and added reusable dungeon and level briefs. |

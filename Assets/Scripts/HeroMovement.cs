@@ -7,7 +7,7 @@ public class HeroMovement : MonoBehaviour
     [Header("Movement")]
     [SerializeField] private Rigidbody2D heroRb;
     [SerializeField, Min(0f)] private float speed = 7.5f;
-    [SerializeField, Min(0f)] private float jumpForce = 11f;
+    [SerializeField, Min(0f)] private float jumpForce = 12f;
     [SerializeField, Min(0f)] private float jumpTime = 0.24f;
 
     [Header("Ground Check")]
@@ -99,7 +99,22 @@ public class HeroMovement : MonoBehaviour
     private void FixedUpdate()
     {
         if (inputLocked) return;
-        heroRb.linearVelocityX = horizontalInput * speed;
+
+        if (Mathf.Abs(horizontalInput) > .01f)
+        {
+            heroRb.linearVelocityX = horizontalInput * speed;
+            return;
+        }
+
+        RaycastHit2D ground = feetPosition == null
+            ? default
+            : Physics2D.Raycast(feetPosition.position, Vector2.down, .55f, groundLayer);
+        bool standingOnSlope = ground.collider != null && Mathf.Abs(ground.normal.x) > .08f;
+        if (!standingOnSlope)
+        {
+            heroRb.linearVelocityX = Mathf.MoveTowards(heroRb.linearVelocityX, 0f,
+                speed * 9f * Time.fixedDeltaTime);
+        }
     }
 
     public void ConfigureMovement(float moveSpeed, float verticalJumpForce, float heldJumpTime)

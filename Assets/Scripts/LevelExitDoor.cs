@@ -7,9 +7,11 @@ public sealed class LevelExitDoor : MonoBehaviour
 {
     [SerializeField] private string destinationScene = "DungeonOverview";
     [SerializeField, Min(0.2f)] private float entranceSeconds = 0.9f;
+    [SerializeField, Min(0)] private int levelNumber;
 
     public string DestinationScene => destinationScene;
     public bool IsUsed { get; private set; }
+    public int LevelNumber => levelNumber;
 
     private void Awake()
     {
@@ -19,6 +21,12 @@ public sealed class LevelExitDoor : MonoBehaviour
     public void Configure(string sceneName)
     {
         destinationScene = sceneName;
+    }
+
+    public void Configure(string sceneName, int completedLevelNumber)
+    {
+        destinationScene = sceneName;
+        levelNumber = Mathf.Max(0, completedLevelNumber);
     }
 
     private void OnTriggerEnter2D(Collider2D other)
@@ -49,6 +57,7 @@ public sealed class LevelExitDoor : MonoBehaviour
         Rigidbody2D body = hero.GetComponent<Rigidbody2D>();
         Collider2D bodyCollider = hero.GetComponent<Collider2D>();
         Animator animator = hero.GetComponent<Animator>();
+        MinerOutfitVisual outfit = hero.GetComponent<MinerOutfitVisual>();
         if (bodyCollider != null) bodyCollider.enabled = false;
         if (body != null)
         {
@@ -56,10 +65,13 @@ public sealed class LevelExitDoor : MonoBehaviour
             body.bodyType = RigidbodyType2D.Kinematic;
         }
         if (animator != null) animator.SetFloat("Speed", 1f);
+        if (outfit != null) outfit.PlayWalkAway();
 
         Vector3 start = hero.transform.position;
         Vector3 destination = new(transform.position.x, transform.position.y - 0.65f, start.z);
-        SpriteRenderer renderer = hero.GetComponent<SpriteRenderer>();
+        SpriteRenderer renderer = outfit != null && outfit.VisualRenderer != null
+            ? outfit.VisualRenderer
+            : hero.GetComponent<SpriteRenderer>();
         Color original = renderer == null ? Color.white : renderer.color;
         float elapsed = 0f;
         while (elapsed < entranceSeconds)
@@ -71,6 +83,7 @@ public sealed class LevelExitDoor : MonoBehaviour
             yield return null;
         }
 
+        GameProgress.CompleteLevel(levelNumber);
         SceneManager.LoadScene(destinationScene);
     }
 }

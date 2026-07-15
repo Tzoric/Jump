@@ -36,7 +36,10 @@ public sealed class PlayerHealth : MonoBehaviour
     {
         body = GetComponent<Rigidbody2D>();
         movement = GetComponent<HeroMovement>();
-        spriteRenderer = GetComponent<SpriteRenderer>();
+        MinerOutfitVisual outfit = GetComponent<MinerOutfitVisual>();
+        spriteRenderer = outfit != null && outfit.VisualRenderer != null
+            ? outfit.VisualRenderer
+            : GetComponent<SpriteRenderer>();
         respawnPosition = transform.position;
         maxHealth = GameProgress.MaxHearts;
         currentHealth = maxHealth;
@@ -96,6 +99,13 @@ public sealed class PlayerHealth : MonoBehaviour
         RefreshDisplay();
     }
 
+    public void ConfigureBaseHealth(int hearts)
+    {
+        maxHealth = Mathf.Max(1, hearts);
+        if (!Application.isPlaying) currentHealth = maxHealth;
+        RefreshDisplay();
+    }
+
     public void ConfigureDisplays(TextMeshProUGUI health, TextMeshProUGUI lives)
     {
         healthDisplay = health;
@@ -107,7 +117,7 @@ public sealed class PlayerHealth : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.H) && currentHealth < maxHealth && GameProgress.ConsumePotion())
         {
-            Heal(maxHealth);
+            Heal(1);
         }
     }
 
