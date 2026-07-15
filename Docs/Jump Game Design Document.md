@@ -495,7 +495,7 @@ These ideas are intentionally saved for later so they are not lost or implemente
 
 ### Implemented rules in version 0.3
 
-- Horizontal movement is 75% of its original speed; jump force and gravity are 60% of their original values so side and vertical motion read together.
+- Horizontal movement is 75% of its original speed; jump force is about 73% and gravity is 60% of their original values so side and vertical motion read together without making authored ledges unreachable.
 - The miner is 125% of the former size and wears a miner helmet while carrying a pickaxe.
 - Players have five base hearts and start a new save with three lives. A spike hit costs one heart. Shop upgrades may add hearts.
 - Level 2, **Sliding Ascent**, travels up and right across connected 22-degree ramps. Falling slides the player toward the bottom. Four spike groups and six collectible green crystals teach hazards and currency.

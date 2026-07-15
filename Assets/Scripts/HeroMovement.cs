@@ -7,7 +7,7 @@ public class HeroMovement : MonoBehaviour
     [Header("Movement")]
     [SerializeField] private Rigidbody2D heroRb;
     [SerializeField, Min(0f)] private float speed = 7.5f;
-    [SerializeField, Min(0f)] private float jumpForce = 9f;
+    [SerializeField, Min(0f)] private float jumpForce = 11f;
     [SerializeField, Min(0f)] private float jumpTime = 0.24f;
 
     [Header("Ground Check")]

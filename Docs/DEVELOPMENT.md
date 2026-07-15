@@ -18,7 +18,7 @@ Every exit plays a short walk-into-the-door transition before returning to the o
 ## Player and economy rules
 
 - Horizontal movement is 7.5 units/second, 75% of the original 10.
-- Jump force is 9 and gravity scale is 5.4, 60% of the former vertical tuning. The held-jump window is 0.24 seconds.
+- Jump force is 11 (about 73% of the former value) and gravity scale is 5.4 (60% of the former value). This preserves reach while making ascent and falling read more naturally beside 75% horizontal speed. The held-jump window is 0.24 seconds.
 - The miner is 125% of the former size and has a helmet and carried pickaxe.
 - A level starts with five hearts plus permanent purchased heart upgrades.
 - A new save starts with three lives. Reaching zero hearts consumes a life and respawns; dying with no lives returns to the overview.

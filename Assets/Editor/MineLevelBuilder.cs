@@ -86,7 +86,7 @@ public static class MineLevelBuilder
             body.gravityScale = 5.4f;
             body.interpolation = RigidbodyInterpolation2D.Interpolate;
             HeroMovement movement = root.GetComponent<HeroMovement>();
-            movement.ConfigureMovement(7.5f, 9f, 0.24f);
+            movement.ConfigureMovement(7.5f, 11f, 0.24f);
             PlayerHealth health = root.GetComponent<PlayerHealth>() ?? root.AddComponent<PlayerHealth>();
             health.ConfigureDisplay(null);
             if (root.GetComponent<PlayerWeight>() == null) root.AddComponent<PlayerWeight>();
