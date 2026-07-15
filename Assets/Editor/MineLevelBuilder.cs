@@ -114,19 +114,19 @@ public static class MineLevelBuilder
     {
         Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         Transform root = new GameObject("Level 1 - Bronze Shaft").transform;
-        CreateBackdropAndLight(root, backdrop, new Vector3(0f, 15.2f, 5f));
+        CreateBackdropAndLight(root, backdrop, new Vector3(0f, 12.5f, 5f));
         GameObject hero = SpawnHero(prefab, scene, new Vector2(3f, -1.2f));
         CreateVerticalCamera(hero.transform);
         Transform route = new GameObject("Beginner Vertical Route").transform; route.SetParent(root);
         CreatePlatform(route, platform, "Start Floor", new Vector2(0f, -2.7f), 12f, 0f);
-        Vector2[] positions = { new(-2.8f,.5f), new(2.8f,3.7f), new(-2.8f,6.9f), new(2.8f,10.1f), new(-2.8f,13.3f), new(2.8f,16.5f), new(-2.8f,19.7f), new(2.8f,22.9f), new(-2.8f,26.1f), new(2.8f,29.3f), new(-2.8f,32.5f) };
+        Vector2[] positions = { new(-2.4f,-.1f), new(2.4f,2.6f), new(-2.4f,5.3f), new(2.4f,8f), new(-2.4f,10.7f), new(2.4f,13.4f), new(-2.4f,16.1f), new(2.4f,18.8f), new(-2.4f,21.5f), new(2.4f,24.2f), new(-2.4f,26.9f) };
         for (int i = 0; i < positions.Length; i++)
         {
             CreatePlatform(route, platform, $"Bronze Rock Ledge {i + 1:00}", positions[i], i == 10 ? 7f : 5.5f, 0f);
             CreateWaypoint(root, positions[i] + Vector2.up * 1.1f, i + 1);
         }
-        CreateDoorWithFoundation(root, platform, door, new Vector2(-4.2f, 35.05f));
-        CreateWallsAndPit(root, new Vector2(0f, 15f), 22f, 50f);
+        CreateDoorWithFoundation(root, platform, door, new Vector2(-3.8f, 29.45f));
+        CreateWallsAndPit(root, new Vector2(0f, 12.5f), 22f, 43f);
         CreateHud(hero.GetComponent<PlayerHealth>(), "LEVEL 1  |  BRONZE SHAFT", "A / D OR ARROWS TO MOVE     SPACE TO JUMP     WALK INTO THE EXIT");
         EditorSceneManager.SaveScene(scene, Level1Path);
     }
@@ -179,7 +179,7 @@ public static class MineLevelBuilder
         go.AddComponent<AudioListener>(); go.AddComponent<UniversalAdditionalCameraData>(); return camera;
     }
 
-    private static void CreateVerticalCamera(Transform hero) => CreateCameraBase(new Vector3(0f,2f,-10f)).gameObject.AddComponent<VerticalCameraFollow>().Configure(hero, 0f, 2f, 30.8f, 1.35f);
+    private static void CreateVerticalCamera(Transform hero) => CreateCameraBase(new Vector3(0f,2f,-10f)).gameObject.AddComponent<VerticalCameraFollow>().Configure(hero, 0f, 2f, 24.2f, 1.35f);
     private static void CreateAngledCamera(Transform hero) => CreateCameraBase(new Vector3(-5f,0f,-10f)).gameObject.AddComponent<BoundedCameraFollow>().Configure(hero, new Vector2(-5f,0f), new Vector2(25f,10f), new Vector2(1.8f,1f));
 
     private static void CreatePlatform(Transform parent, Sprite sprite, string name, Vector2 position, float width, float angle)
