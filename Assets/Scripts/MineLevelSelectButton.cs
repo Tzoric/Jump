@@ -48,6 +48,8 @@ public sealed class MineLevelSelectButton : MonoBehaviour
         string lockText = "LOCKED";
         if (levelNumber == 11)
             lockText = GameProgress.HighestUnlockedLevel < 11 ? "FINISH LEVEL 10" : "SILVER KEY";
+        else if (levelNumber == 12)
+            lockText = "FINISH LEVEL 11";
         label.text = unlocked ? $"{levelNumber}\n{levelName}" : $"{levelNumber}\n{lockText}";
     }
 

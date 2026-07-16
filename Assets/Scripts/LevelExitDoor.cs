@@ -1,21 +1,37 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
 [RequireComponent(typeof(Collider2D))]
 public sealed class LevelExitDoor : MonoBehaviour
 {
+    public const string ExitPrompt = "PRESS X / UP / W TO EXIT LEVEL";
+
     [SerializeField] private string destinationScene = "DungeonOverview";
     [SerializeField, Min(0.2f)] private float entranceSeconds = 0.9f;
     [SerializeField, Min(0)] private int levelNumber;
 
+    private readonly HashSet<Collider2D> nearbyPlayerColliders = new();
+    private HeroMovement nearbyHero;
+    private MineRunInventory nearbyInventory;
+
     public string DestinationScene => destinationScene;
     public bool IsUsed { get; private set; }
+    public bool IsPlayerNearby => nearbyHero != null;
     public int LevelNumber => levelNumber;
 
     private void Awake()
     {
         GetComponent<Collider2D>().isTrigger = true;
+    }
+
+    private void Update()
+    {
+        if (!MineLevelMenuController.IsPaused && nearbyHero != null && MineInput.InteractPressed)
+        {
+            TryInteract(nearbyHero);
+        }
     }
 
     public void Configure(string sceneName)
@@ -31,24 +47,55 @@ public sealed class LevelExitDoor : MonoBehaviour
 
     private void OnTriggerEnter2D(Collider2D other)
     {
-        TryUse(other);
+        RegisterNearbyPlayer(other);
     }
 
     private void OnTriggerStay2D(Collider2D other)
     {
-        TryUse(other);
+        if (!nearbyPlayerColliders.Contains(other)) RegisterNearbyPlayer(other);
     }
 
-    private void TryUse(Collider2D other)
+    private void OnTriggerExit2D(Collider2D other)
+    {
+        if (!nearbyPlayerColliders.Remove(other) || nearbyPlayerColliders.Count > 0) return;
+
+        MineRunInventory inventory = nearbyInventory;
+        nearbyHero = null;
+        nearbyInventory = null;
+        if (!IsUsed) inventory?.RestoreProgressStatus();
+    }
+
+    private void OnDisable()
+    {
+        if (!IsUsed) nearbyInventory?.RestoreProgressStatus();
+        nearbyPlayerColliders.Clear();
+        nearbyHero = null;
+        nearbyInventory = null;
+    }
+
+    private void RegisterNearbyPlayer(Collider2D other)
     {
         HeroMovement hero = other.GetComponentInParent<HeroMovement>();
-        if (IsUsed || hero == null || !hero.IsGrounded)
+        if (IsUsed || hero == null || (nearbyHero != null && nearbyHero != hero)) return;
+
+        nearbyPlayerColliders.Add(other);
+        nearbyHero = hero;
+        nearbyInventory = hero.GetComponent<MineRunInventory>();
+        nearbyInventory?.ShowMessage(ExitPrompt);
+    }
+
+    public bool TryInteract(HeroMovement hero)
+    {
+        PlayerHealth health = hero == null ? null : hero.GetComponent<PlayerHealth>();
+        if (IsUsed || hero == null || hero != nearbyHero || !hero.IsGrounded ||
+            (health != null && !health.CanAct))
         {
-            return;
+            return false;
         }
 
         IsUsed = true;
         StartCoroutine(EnterDoorRoutine(hero));
+        return true;
     }
 
     private IEnumerator EnterDoorRoutine(HeroMovement hero)
@@ -83,6 +130,7 @@ public sealed class LevelExitDoor : MonoBehaviour
             yield return null;
         }
 
+        OverviewArrival.Clear();
         GameProgress.CompleteLevel(levelNumber);
         SceneManager.LoadScene(destinationScene);
     }

@@ -9,13 +9,14 @@ public sealed class GameOverController : MonoBehaviour
 
     public void RestartGame()
     {
+        OverviewArrival.Clear();
         GameProgress.RestartAfterGameOver();
         SceneManager.LoadScene(restartScene);
     }
 
     private void Update()
     {
-        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.Space))
+        if (MineInput.ConfirmPressed)
             RestartGame();
     }
 }

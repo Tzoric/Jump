@@ -1,18 +1,20 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using TMPro;
 using UnityEditor;
 using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public static class MineLevelBuilder
 {
-    private enum ShaftDirection { Vertical, Angled, Horizontal }
+    private enum ShaftDirection { Vertical, Angled, Horizontal, Mixed }
 
     private readonly struct LevelSpec
     {
@@ -43,16 +45,19 @@ public static class MineLevelBuilder
         public readonly Sprite Spike;
         public readonly Sprite Door;
         public readonly Sprite Backdrop;
+        public readonly Sprite DiagonalBackdrop;
         public readonly Sprite BronzeKey;
         public readonly Sprite SilverKey;
         public readonly Sprite Chest;
+        public readonly Sprite OpenChest;
 
         public ArtSet(Sprite platform, Sprite greenGem, Sprite blueGem, Sprite purpleGem, Sprite spike,
-            Sprite door, Sprite backdrop, Sprite bronzeKey, Sprite silverKey, Sprite chest)
+            Sprite door, Sprite backdrop, Sprite diagonalBackdrop, Sprite bronzeKey, Sprite silverKey, Sprite chest,
+            Sprite openChest)
         {
             Platform = platform; GreenGem = greenGem; BlueGem = blueGem; PurpleGem = purpleGem;
-            Spike = spike; Door = door; Backdrop = backdrop; BronzeKey = bronzeKey;
-            SilverKey = silverKey; Chest = chest;
+            Spike = spike; Door = door; Backdrop = backdrop; DiagonalBackdrop = diagonalBackdrop; BronzeKey = bronzeKey;
+            SilverKey = silverKey; Chest = chest; OpenChest = openChest;
         }
     }
 
@@ -68,7 +73,8 @@ public static class MineLevelBuilder
         new(8, "Level8_RazorAscent", "RAZOR ASCENT", ShaftDirection.Angled, 14),
         new(9, "Level9_AbyssRun", "ABYSS RUN", ShaftDirection.Horizontal, 16),
         new(10, "Level10_KeyVault", "THE KEY VAULT", ShaftDirection.Vertical, 26),
-        new(11, "Level11_TreasureVein", "TREASURE VEIN", ShaftDirection.Angled, 18)
+        new(11, "Level11_TreasureVein", "TREASURE VEIN", ShaftDirection.Angled, 18),
+        new(12, "Level12_DeepworksGauntlet", "DEEPWORKS GAUNTLET", ShaftDirection.Mixed, 60)
     };
 
     private const string OverviewPath = "Assets/Scenes/DungeonOverview.unity";
@@ -76,6 +82,7 @@ public static class MineLevelBuilder
     private const string HeroPrefabPath = "Assets/PreFabs/Hero.prefab";
     private const string Art = "Assets/Art/Generated";
     private const string BackdropPath = Art + "/MineLevel1BronzeBackdrop.png";
+    private const string DiagonalBackdropPath = Art + "/MineDiagonalBronzeBackdrop.png";
     private const string OverviewBackdropPath = Art + "/MineDungeonOverview.png";
     private const string DoorPath = Art + "/MineExitDoor.png";
     private const string PlatformPath = Art + "/MineRockBronzePlatform.png";
@@ -87,15 +94,17 @@ public static class MineLevelBuilder
     private const string MinerAnimationSheetPath = Art + "/MinerAnimationSheet.png";
     private const string MinerOutfitPath = Art + "/BronzeMinerOutfit.asset";
     private const string SlideMaterialPath = Art + "/BronzeRampSlide.physicsMaterial2D";
-    private const string PickPath = Art + "/MinerPickaxe.png";
+    private const string HeroMaterialPath = Art + "/HeroNoStick.physicsMaterial2D";
+    private const string ParachutePath = Art + "/MinerParachute.png";
     private const string BronzeKeyPath = Art + "/BronzeKey.png";
     private const string SilverKeyPath = Art + "/SilverKey.png";
     private const string ChestPath = Art + "/BronzeRewardChest.png";
+    private const string OpenChestPath = Art + "/BronzeRewardChestOpen.png";
 
     private static readonly Color32 Amber = new(244, 180, 82, 255);
     private static readonly Color32 Bronze = new(184, 113, 58, 255);
 
-    [MenuItem("Jump/Level Tools/Build Bronze Mines Levels 1-11")]
+    [MenuItem("Jump/Level Tools/Build Bronze Mines Levels 1-12")]
     public static void Build()
     {
         EnsureFolders();
@@ -104,22 +113,24 @@ public static class MineLevelBuilder
 
         Sprite miner = ImportSprite(MinerCharacterPath, 1024f);
         Sprite animationSheet = ImportSprite(MinerAnimationSheetPath, 220f, true);
-        Sprite pick = ImportSprite(PickPath, 32f);
-        CharacterOutfitDefinition minerOutfit = EnsureOutfitDefinition(animationSheet, pick);
-        GameObject heroPrefab = EnsureHeroPrefab(miner, minerOutfit);
+        Sprite parachute = ImportSprite(ParachutePath, 32f);
+        CharacterOutfitDefinition minerOutfit = EnsureOutfitDefinition(animationSheet, null);
         PhysicsMaterial2D slideMaterial = EnsureSlideMaterial();
+        PhysicsMaterial2D heroMaterial = EnsureHeroMaterial();
+        GameObject heroPrefab = EnsureHeroPrefab(miner, minerOutfit, parachute, heroMaterial);
         ArtSet art = new(
             ImportSprite(PlatformPath, 16f), ImportSprite(GreenGemPath, 24f),
             ImportSprite(BlueGemPath, 24f), ImportSprite(PurpleGemPath, 24f),
             ImportSprite(SpikePath, 24f), ImportSprite(DoorPath, 256f),
-            ImportSprite(BackdropPath, 32f), ImportSprite(BronzeKeyPath, 24f),
-            ImportSprite(SilverKeyPath, 24f), ImportSprite(ChestPath, 24f));
+            ImportSprite(BackdropPath, 32f), ImportSprite(DiagonalBackdropPath, 32f), ImportSprite(BronzeKeyPath, 24f),
+            ImportSprite(SilverKeyPath, 24f), ImportSprite(ChestPath, 24f), ImportSprite(OpenChestPath, 24f));
         Sprite overview = ImportSprite(OverviewBackdropPath, 100f);
 
         foreach (LevelSpec level in Levels)
         {
             if (level.Number == 1) BuildLevel1(level, heroPrefab, art);
             else if (level.Number == 2) BuildLevel2(level, heroPrefab, art, slideMaterial);
+            else if (level.Number == 12) BuildLevel12(level, heroPrefab, art);
             else BuildGeneratedLevel(level, heroPrefab, art);
         }
         BuildOverview(overview);
@@ -135,7 +146,7 @@ public static class MineLevelBuilder
 
         AssetDatabase.SaveAssets();
         EditorSceneManager.OpenScene(OverviewPath, OpenSceneMode.Single);
-        Debug.Log("Built Dungeon 1 — Bronze Mines: overview, shop, and Levels 1-11 with alternating shaft directions.");
+        Debug.Log("Built Dungeon 1 — Bronze Mines: overview, shop, and Levels 1-12 including the mixed Deepworks Gauntlet.");
     }
 
     private static void EnsureFolders()
@@ -176,7 +187,24 @@ public static class MineLevelBuilder
         return material;
     }
 
-    private static GameObject EnsureHeroPrefab(Sprite minerSprite, CharacterOutfitDefinition minerOutfit)
+    private static PhysicsMaterial2D EnsureHeroMaterial()
+    {
+        PhysicsMaterial2D material = AssetDatabase.LoadAssetAtPath<PhysicsMaterial2D>(HeroMaterialPath);
+        if (material == null)
+        {
+            material = new PhysicsMaterial2D("Hero No Stick");
+            AssetDatabase.CreateAsset(material, HeroMaterialPath);
+        }
+        material.friction = 0f;
+        material.bounciness = 0f;
+        material.frictionCombine = PhysicsMaterialCombine2D.Minimum;
+        material.bounceCombine = PhysicsMaterialCombine2D.Minimum;
+        EditorUtility.SetDirty(material);
+        return material;
+    }
+
+    private static GameObject EnsureHeroPrefab(Sprite minerSprite, CharacterOutfitDefinition minerOutfit,
+        Sprite parachuteSprite, PhysicsMaterial2D heroMaterial)
     {
         GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(HeroPrefabPath);
         if (prefab == null) throw new FileNotFoundException($"Missing reusable hero prefab at {HeroPrefabPath}");
@@ -188,7 +216,10 @@ public static class MineLevelBuilder
             root.transform.localScale = Vector3.one * 1.875f;
             Rigidbody2D body = root.GetComponent<Rigidbody2D>();
             body.gravityScale = 5.4f; body.interpolation = RigidbodyInterpolation2D.Interpolate;
-            root.GetComponent<HeroMovement>().ConfigureMovement(7.5f, 12f, .24f, .08f);
+            foreach (Collider2D heroCollider in root.GetComponents<Collider2D>())
+                if (!heroCollider.isTrigger) heroCollider.sharedMaterial = heroMaterial;
+            root.GetComponent<HeroMovement>().ConfigureMovement(7.5f, 12f, .24f, .08f,
+                9f, 14.75f, .26f);
             PlayerHealth health = root.GetComponent<PlayerHealth>() ?? root.AddComponent<PlayerHealth>();
             health.ConfigureBaseHealth(GameProgress.BaseHearts);
             health.ConfigureDisplay(null);
@@ -203,9 +234,15 @@ public static class MineLevelBuilder
             Transform miner = CreateAccessory(root.transform, "Integrated Miner Character", minerSprite,
                 new Vector3(0f, .02f, -.01f), 10);
             miner.localScale = Vector3.one * .95f;
-            Transform pick = CreatePickaxeRig(root.transform, minerOutfit.HandTool);
+            Transform parachute = CreateAccessory(root.transform, "Level 12 Parachute Canopy", parachuteSprite,
+                new Vector3(0f, 1.28f, -.025f), 9);
+            parachute.localScale = Vector3.one * .82f;
+            SpriteRenderer parachuteRenderer = parachute.GetComponent<SpriteRenderer>();
+            parachuteRenderer.enabled = false;
+            (root.GetComponent<ParachuteDescentController>() ?? root.AddComponent<ParachuteDescentController>())
+                .Configure(parachuteRenderer);
             (root.GetComponent<MinerOutfitVisual>() ?? root.AddComponent<MinerOutfitVisual>())
-                .Configure(directionSource, miner.GetComponent<SpriteRenderer>(), pick, minerOutfit);
+                .Configure(directionSource, miner.GetComponent<SpriteRenderer>(), null, minerOutfit);
             PrefabUtility.SaveAsPrefabAsset(root, HeroPrefabPath);
         }
         finally { PrefabUtility.UnloadPrefabContents(root); }
@@ -217,17 +254,6 @@ public static class MineLevelBuilder
         GameObject go = new(name); go.transform.SetParent(parent, false); go.transform.localPosition = position;
         SpriteRenderer renderer = go.AddComponent<SpriteRenderer>(); renderer.sprite = sprite; renderer.sortingOrder = order;
         return go.transform;
-    }
-
-    private static Transform CreatePickaxeRig(Transform parent, Sprite sprite)
-    {
-        GameObject pivot = new("Pick Hand Pivot");
-        pivot.transform.SetParent(parent, false);
-        pivot.transform.localPosition = new Vector3(.31f, -.02f, -.02f);
-        Transform pick = CreateAccessory(pivot.transform, "Small Hand Pickaxe", sprite,
-            new Vector3(.04f, .01f, 0f), 11);
-        pick.localScale = Vector3.one * .48f;
-        return pivot.transform;
     }
 
     private static void BuildLevel1(LevelSpec level, GameObject prefab, ArtSet art)
@@ -261,7 +287,7 @@ public static class MineLevelBuilder
     {
         Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         Transform root = new GameObject("Level 2 - Sliding Ascent").transform;
-        CreateBackdropAndLight(root, art.Backdrop, new Vector3(14,8,5), new Vector2(2.5f,1.8f), 16f);
+        CreateBackdropAndLight(root, art.DiagonalBackdrop, new Vector3(14,8,5), new Vector2(1.45f,1.2f));
 
         Vector2 resetPosition = new(-10f, 1.35f);
         GameObject hero = SpawnHero(prefab, scene, resetPosition);
@@ -321,6 +347,241 @@ public static class MineLevelBuilder
         EditorSceneManager.SaveScene(scene,level.Path);
     }
 
+    private static void BuildLevel12(LevelSpec level, GameObject prefab, ArtSet art)
+    {
+        Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        Transform root = new GameObject("Level 12 - Deepworks Mixed Gauntlet").transform;
+        CreateGlobalMineLight(root);
+
+        Vector2 cursor = new(-8f, -2.7f);
+        var routePoints = new List<Vector2> { cursor };
+        Transform route = new GameObject("Level 12 Seeded Mixed Route").transform;
+        route.SetParent(root);
+        CreatePlatform(route, art.Platform, "Deepworks Start Shelf", cursor, 8f, 0f);
+
+        GameObject hero = SpawnHero(prefab, scene, cursor + Vector2.up * 1.5f);
+        int waypointOrder = 0;
+        MineRouteSectionType[] sectionOrder = CreateLevel12SectionOrder(12012);
+        for (int index = 0; index < sectionOrder.Length; index++)
+        {
+            Vector2 entry = cursor;
+            Transform section = new GameObject($"Mixed Section {index + 1:00} - {sectionOrder[index]}").transform;
+            section.SetParent(route);
+
+            float pathLength;
+            switch (sectionOrder[index])
+            {
+                case MineRouteSectionType.VerticalUp:
+                    cursor = BuildLevel12VerticalUp(section, art, cursor, ref waypointOrder, routePoints,
+                        index, out pathLength);
+                    break;
+                case MineRouteSectionType.AngledUp:
+                    cursor = BuildLevel12AngledUp(section, art, cursor, ref waypointOrder, routePoints,
+                        index, out pathLength);
+                    break;
+                case MineRouteSectionType.Horizontal:
+                    cursor = BuildLevel12Horizontal(section, root, art, cursor, ref waypointOrder,
+                        routePoints, index, out pathLength);
+                    break;
+                case MineRouteSectionType.VerticalDown:
+                    cursor = BuildLevel12Descent(section, root, art, cursor, ref waypointOrder,
+                        routePoints, index, out pathLength);
+                    break;
+                default:
+                    throw new System.ArgumentOutOfRangeException();
+            }
+
+            section.gameObject.AddComponent<MineRouteSection>().Configure(index + 1, sectionOrder[index],
+                entry, cursor, pathLength);
+            CreateLevel12SectionBackdrop(section, art, sectionOrder[index], entry, cursor, index + 1);
+        }
+
+        Vector2 keyPosition = routePoints[Mathf.Clamp(routePoints.Count / 3, 0, routePoints.Count - 1)] +
+                              new Vector2(10f, 3.8f);
+        Vector2 chestPosition = routePoints[Mathf.Clamp(routePoints.Count * 4 / 5, 0, routePoints.Count - 1)] +
+                                new Vector2(-10f, 4f);
+        CreateBronzeChallenge(root, art, level.Number, keyPosition, chestPosition);
+        CreateDoor(root, art, level.Number, cursor + new Vector2(5.2f, 2.55f));
+
+        float minX = routePoints.Min(point => point.x) - 4f;
+        float maxX = routePoints.Max(point => point.x) + 4f;
+        float minY = routePoints.Min(point => point.y) - 4f;
+        float maxY = routePoints.Max(point => point.y) + 4f;
+        Camera camera = CreateCameraBase(new Vector3(cursor.x, cursor.y, -10f));
+        camera.gameObject.AddComponent<MixedRouteCameraFollow>().Configure(hero.transform,
+            new Vector2(minX, minY), new Vector2(maxX, maxY));
+
+        CreateHud(hero, level,
+            "MIXED DEEPWORKS GAUNTLET     HOLD JUMP TO OPEN THE PARACHUTE IN DESCENTS     DODGE REVEALED HAZARDS");
+        EditorSceneManager.SaveScene(scene, level.Path);
+    }
+
+    private static MineRouteSectionType[] CreateLevel12SectionOrder(int seed)
+    {
+        var result = new List<MineRouteSectionType>(12);
+        var random = new System.Random(seed);
+        MineRouteSectionType previous = MineRouteSectionType.VerticalDown;
+        for (int round = 0; round < 3; round++)
+        {
+            var group = new List<MineRouteSectionType>
+            {
+                MineRouteSectionType.VerticalUp,
+                MineRouteSectionType.AngledUp,
+                MineRouteSectionType.Horizontal,
+                MineRouteSectionType.VerticalDown
+            };
+            for (int index = group.Count - 1; index > 0; index--)
+            {
+                int swap = random.Next(index + 1);
+                (group[index], group[swap]) = (group[swap], group[index]);
+            }
+            if ((round == 0 && group[0] == MineRouteSectionType.VerticalDown) || group[0] == previous)
+            {
+                int swap = group.FindIndex(type => type != MineRouteSectionType.VerticalDown && type != previous);
+                (group[0], group[swap]) = (group[swap], group[0]);
+            }
+            result.AddRange(group);
+            previous = group[^1];
+        }
+        return result.ToArray();
+    }
+
+    private static Vector2 BuildLevel12VerticalUp(Transform section, ArtSet art, Vector2 entry,
+        ref int waypointOrder, ICollection<Vector2> routePoints, int sectionIndex, out float pathLength)
+    {
+        Vector2 previous = entry;
+        pathLength = 0f;
+        for (int step = 0; step < 7; step++)
+        {
+            Vector2 position = new(entry.x + (step % 2 == 0 ? -3f : 3f), entry.y + (step + 1) * 3.25f);
+            CreatePlatform(section, art.Platform, $"Mixed Vertical Ledge {sectionIndex + 1:00}-{step + 1:00}",
+                position, 4f, 0f);
+            CreateWaypoint(section, position + Vector2.up * 1.45f, ++waypointOrder);
+            if (step >= 2 && step % 2 == 0)
+                CreateSpike(section, art.Spike, position + new Vector2(step % 4 == 0 ? 1f : -1f, .82f), 0f);
+            if (step % 2 == 1) CreateGem(section, art.GreenGem, position + Vector2.up * 2f, 1);
+            pathLength += Vector2.Distance(previous, position);
+            previous = position;
+            routePoints.Add(position);
+        }
+        return previous;
+    }
+
+    private static Vector2 BuildLevel12AngledUp(Transform section, ArtSet art, Vector2 entry,
+        ref int waypointOrder, ICollection<Vector2> routePoints, int sectionIndex, out float pathLength)
+    {
+        Vector2 previous = entry;
+        pathLength = 0f;
+        for (int step = 0; step < 7; step++)
+        {
+            Vector2 position = entry + new Vector2((step + 1) * 6.1f, (step + 1) * 2.7f);
+            CreatePlatform(section, art.Platform, $"Mixed Diagonal Ledge {sectionIndex + 1:00}-{step + 1:00}",
+                position, 4.5f - step * .08f, 18f);
+            CreateWaypoint(section, position + Vector2.up * 1.55f, ++waypointOrder);
+            if (step > 1 && step % 2 == 1)
+                CreateSpike(section, art.Spike, position + new Vector2(1f, .9f), 18f);
+            if (step % 2 == 0) CreateGem(section, art.GreenGem, position + Vector2.up * 2.1f, 1);
+            pathLength += Vector2.Distance(previous, position);
+            previous = position;
+            routePoints.Add(position);
+        }
+        return previous;
+    }
+
+    private static Vector2 BuildLevel12Horizontal(Transform section, Transform levelRoot, ArtSet art,
+        Vector2 entry, ref int waypointOrder, ICollection<Vector2> routePoints, int sectionIndex,
+        out float pathLength)
+    {
+        Vector2 previousPosition = entry;
+        GameObject previousPlatform = CreatePlatform(section, art.Platform,
+            $"Mixed Horizontal Hub {sectionIndex + 1:00}", entry, 6.5f, 0f);
+        pathLength = 0f;
+        for (int step = 0; step < 7; step++)
+        {
+            float yOffset = step % 3 == 0 ? .35f : step % 3 == 1 ? 1.25f : -.15f;
+            Vector2 position = entry + new Vector2((step + 1) * 6.8f, yOffset);
+            float width = 4.25f - (step % 3) * .3f;
+            GameObject platform = CreatePlatform(section, art.Platform,
+                $"Mixed Pit Ledge {sectionIndex + 1:00}-{step + 1:00}", position, width, 0f);
+            CreateWaypoint(section, position + Vector2.up * 1.45f, ++waypointOrder);
+            Physics2D.SyncTransforms();
+            CreateLocalBottomlessPit(levelRoot, $"Level 12 Local Bottomless Pit {sectionIndex + 1:00}-{step + 1:00}",
+                previousPlatform.GetComponent<BoxCollider2D>().bounds,
+                platform.GetComponent<BoxCollider2D>().bounds);
+            // Keep the final ledge clear so it is a readable, safe launch into a following
+            // descent section instead of hiding a spike directly under the parachute cue.
+            if (step > 1 && step < 6 && step % 2 == 0)
+                CreateSpike(section, art.Spike, position + new Vector2(.8f, .82f), 0f);
+            if (step % 2 == 1) CreateGem(section, art.GreenGem, position + Vector2.up * 2f, 1);
+            pathLength += Vector2.Distance(previousPosition, position);
+            previousPosition = position;
+            previousPlatform = platform;
+            routePoints.Add(position);
+        }
+        return previousPosition;
+    }
+
+    private static Vector2 BuildLevel12Descent(Transform section, Transform levelRoot, ArtSet art,
+        Vector2 entry, ref int waypointOrder, ICollection<Vector2> routePoints, int sectionIndex,
+        out float pathLength)
+    {
+        const float depth = 30f;
+        CreatePlatform(section, art.Platform, $"Parachute Launch Shelf {sectionIndex + 1:00}", entry, 7f, 0f);
+
+        GameObject zone = new($"Parachute Descent Zone {sectionIndex + 1:00}");
+        zone.transform.SetParent(section);
+        zone.transform.position = entry + Vector2.down * 14f;
+        BoxCollider2D zoneCollider = zone.AddComponent<BoxCollider2D>();
+        zoneCollider.isTrigger = true;
+        zoneCollider.size = new Vector2(18f, 27f);
+        zone.AddComponent<ParachuteDescentZone>().Configure(depth);
+
+        CreateBoundary(section, $"Descent Left Wall {sectionIndex + 1:00}",
+            entry + new Vector2(-9.5f, -15f), new Vector2(1f, 32f));
+        CreateBoundary(section, $"Descent Right Wall {sectionIndex + 1:00}",
+            entry + new Vector2(9.5f, -15f), new Vector2(1f, 32f));
+
+        float[] hazardDepths = { 6f, 11.5f, 17f, 22.5f };
+        for (int hazardIndex = 0; hazardIndex < hazardDepths.Length; hazardIndex++)
+        {
+            // The first hazard is always on the left, directing the player off the open
+            // right edge of the launch shelf and away from the preceding section's pit.
+            bool left = hazardIndex % 2 == 0;
+            Vector2 hazardPosition = entry + new Vector2(left ? -7.8f : 7.8f, -hazardDepths[hazardIndex]);
+            CreateHiddenDescentSpike(section, art.Spike,
+                $"Hidden Descent Spike {sectionIndex + 1:00}-{hazardIndex + 1:00}", hazardPosition,
+                left ? -90f : 90f);
+            Vector2 safePass = entry + new Vector2(left ? 3.8f : -3.8f, -hazardDepths[hazardIndex] - .4f);
+            CreateWaypoint(section, safePass, ++waypointOrder, AutomatedWaypointMode.AirbornePass, 1.5f, true);
+            routePoints.Add(safePass);
+        }
+
+        CreateOscillatingDescentHazard(section, art.Spike,
+            $"Moving Spike Bar {sectionIndex + 1:00}-A", entry + new Vector2(0f, -9f), 4.6f, sectionIndex * .17f);
+        CreateOscillatingDescentHazard(section, art.Spike,
+            $"Moving Spike Bar {sectionIndex + 1:00}-B", entry + new Vector2(0f, -20f), 4.2f, .45f + sectionIndex * .11f);
+
+        Vector2 bottom = entry + Vector2.down * depth;
+        CreatePlatform(section, art.Platform, $"Parachute Landing Shelf {sectionIndex + 1:00}", bottom, 12f, 0f);
+        CreateWaypoint(section, bottom + Vector2.up * 1.45f, ++waypointOrder);
+        CreateGem(section, art.GreenGem, bottom + new Vector2(-3f, 2f), 1);
+        CreateGem(section, art.GreenGem, bottom + new Vector2(3f, 2f), 1);
+        routePoints.Add(bottom);
+        pathLength = depth;
+        return bottom;
+    }
+
+    private static void CreateLevel12SectionBackdrop(Transform parent, ArtSet art,
+        MineRouteSectionType type, Vector2 entry, Vector2 exit, int order)
+    {
+        Vector2 center = (entry + exit) * .5f;
+        Vector2 span = new(Mathf.Abs(exit.x - entry.x) + 22f, Mathf.Abs(exit.y - entry.y) + 18f);
+        Sprite sprite = type == MineRouteSectionType.AngledUp ? art.DiagonalBackdrop : art.Backdrop;
+        Vector2 nativeSize = type == MineRouteSectionType.AngledUp ? new Vector2(48f, 32f) : new Vector2(32f, 48f);
+        CreateBackdrop(parent, sprite, $"Section {order:00} {type} Backdrop", new Vector3(center.x, center.y, 5f),
+            new Vector2(Mathf.Max(.8f, span.x / nativeSize.x), Mathf.Max(.8f, span.y / nativeSize.y)));
+    }
+
     private static void BuildGeneratedLevel(LevelSpec level, GameObject prefab, ArtSet art)
     {
         Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -342,7 +603,8 @@ public static class MineLevelBuilder
         {
             float maxX=-3.2f+(level.Segments-1)*6.5f;
             float maxY=-.1f+(level.Segments-1)*2.9f;
-            CreateBackdropAndLight(root,art.Backdrop,new Vector3(maxX*.5f,maxY*.5f,5),new Vector2(Mathf.Max(1,(maxX+20)/36f),Mathf.Max(1,(maxY+15)/58f)),18f);
+            CreateBackdropAndLight(root,art.DiagonalBackdrop,new Vector3(maxX*.5f,maxY*.5f,5),
+                new Vector2(Mathf.Max(1,(maxX+20)/48f),Mathf.Max(1,(maxY+15)/32f)));
             hero=SpawnHero(prefab,scene,new Vector2(-7.5f,-2));
             CreateAngledCamera(hero.transform,-5,maxX,0,Mathf.Max(0,maxY-1));
             BuildAngledRoute(root,level,art,out keyPosition,out chestPosition);
@@ -370,14 +632,28 @@ public static class MineLevelBuilder
         Transform route=new GameObject("Vertical Shaft Route").transform; route.SetParent(root);
         CreatePlatform(route,art.Platform,"Start Floor",new Vector2(3f,-2.7f),5.2f,0);
         float width=Mathf.Max(3.7f,5.2f-level.Number*.12f);
+        const float standardRouteSpikeOffset = 1.1f;
+        const float standardSafeLandingOffset = .4f;
+        const float level10RouteSpikeOffset = 1.25f;
+        const float level10SafeLandingOffset = .5f;
+        const float level10LandingRadius = .3f;
         float topY=0;
         for(int i=0;i<level.Segments;i++)
         {
             float y=.5f+i*3.25f; topY=y;
-            float x=i%2==0?-2.8f:2.8f;
+            float routeHalfWidth=level.Number==10?3.1f:2.8f;
+            float x=i%2==0?-routeHalfWidth:routeHalfWidth;
             CreatePlatform(route,art.Platform,$"Vertical Ledge {i+1:00}",new Vector2(x,y),width,0);
-            CreateWaypoint(root,new Vector2(x,y+1.4f),i+1);
-            if(i>1 && i%(level.Number>=8?2:3)==0) CreateSpike(root,art.Spike,new Vector2(x+(i%4==0?1.1f:-1.1f),y+.8f),0);
+            bool hasRouteSpike=i>1 && i%(level.Number>=8?2:3)==0;
+            float routeSpikeOffset=level.Number==10?level10RouteSpikeOffset:standardRouteSpikeOffset;
+            float safeLandingOffset=level.Number==10?level10SafeLandingOffset:standardSafeLandingOffset;
+            float spikeOffset=hasRouteSpike
+                ? level.Number==10?Mathf.Sign(x)*routeSpikeOffset:(i%4==0?routeSpikeOffset:-routeSpikeOffset)
+                : 0f;
+            float safeWaypointOffset=hasRouteSpike?-Mathf.Sign(spikeOffset)*safeLandingOffset:0f;
+            CreateWaypoint(root,new Vector2(x+safeWaypointOffset,y+1.4f),i+1,
+                radius:level.Number==10?level10LandingRadius:.65f,requirePowerJump:level.Number==10);
+            if(hasRouteSpike) CreateSpike(root,art.Spike,new Vector2(x+spikeOffset,y+.8f),0);
             if(level.Number<11 && i>2 && i%4==1) CreateGem(root,art.GreenGem,new Vector2(x,y+2.1f),1);
         }
         CreateDoor(root,art,level.Number,new Vector2(level.Segments%2==0?8.1f:-8.1f,topY+2.55f));
@@ -437,8 +713,18 @@ public static class MineLevelBuilder
 
     private static void CreateBackdropAndLight(Transform parent,Sprite sprite,Vector3 position,Vector2 scale,float angle=0f)
     {
-        GameObject backdrop=new("Bronze Mine Backdrop"); backdrop.transform.SetParent(parent); backdrop.transform.position=position; backdrop.transform.rotation=Quaternion.Euler(0,0,angle); backdrop.transform.localScale=new Vector3(scale.x,scale.y,1);
+        CreateBackdrop(parent,sprite,"Bronze Mine Backdrop",position,scale,angle);
+        CreateGlobalMineLight(parent);
+    }
+
+    private static void CreateBackdrop(Transform parent,Sprite sprite,string name,Vector3 position,Vector2 scale,float angle=0f)
+    {
+        GameObject backdrop=new(name); backdrop.transform.SetParent(parent); backdrop.transform.position=position; backdrop.transform.rotation=Quaternion.Euler(0,0,angle); backdrop.transform.localScale=new Vector3(scale.x,scale.y,1);
         SpriteRenderer renderer=backdrop.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=-100;
+    }
+
+    private static void CreateGlobalMineLight(Transform parent)
+    {
         GameObject lightGo=new("Global Bronze Mine Light"); lightGo.transform.SetParent(parent); Light2D light=lightGo.AddComponent<Light2D>(); light.lightType=Light2D.LightType.Global; light.color=new Color32(190,202,225,255); light.intensity=.82f;
     }
 
@@ -468,6 +754,25 @@ public static class MineLevelBuilder
         GameObject go=new("Bronze Spike - 1 Heart"); go.transform.SetParent(parent); go.transform.position=position; go.transform.rotation=Quaternion.Euler(0,0,angle); SpriteRenderer renderer=go.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=5; BoxCollider2D trigger=go.AddComponent<BoxCollider2D>(); trigger.isTrigger=true; trigger.size=new Vector2(1.2f,.65f); trigger.offset=new Vector2(0,.12f); go.AddComponent<DamageZone>().Configure(1);
     }
 
+    private static void CreateHiddenDescentSpike(Transform parent,Sprite sprite,string name,Vector2 position,float angle)
+    {
+        GameObject go=new(name); go.transform.SetParent(parent); go.transform.position=position; go.transform.rotation=Quaternion.Euler(0,0,angle); go.transform.localScale=new Vector3(1.5f,1.25f,1f);
+        SpriteRenderer renderer=go.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=6;
+        BoxCollider2D trigger=go.AddComponent<BoxCollider2D>(); trigger.isTrigger=true; trigger.size=new Vector2(1.2f,.65f); trigger.offset=new Vector2(0,.12f);
+        go.AddComponent<DamageZone>().Configure(1);
+        go.AddComponent<ProximityHiddenHazard>().Configure(10f,.6f);
+    }
+
+    private static void CreateOscillatingDescentHazard(Transform parent,Sprite sprite,string name,Vector2 position,float travelDistance,float phase)
+    {
+        GameObject go=new(name); go.transform.SetParent(parent); go.transform.position=position; go.transform.localScale=new Vector3(2.3f,1.15f,1f);
+        SpriteRenderer renderer=go.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=6;
+        BoxCollider2D trigger=go.AddComponent<BoxCollider2D>(); trigger.isTrigger=true; trigger.size=new Vector2(1.2f,.65f); trigger.offset=new Vector2(0,.12f);
+        go.AddComponent<DamageZone>().Configure(1);
+        Rigidbody2D body=go.AddComponent<Rigidbody2D>(); body.bodyType=RigidbodyType2D.Kinematic; body.gravityScale=0f;
+        go.AddComponent<OscillatingHazard>().Configure(Vector2.right,travelDistance,.24f,phase);
+    }
+
     private static void CreateGem(Transform parent,Sprite sprite,Vector2 position,int value)
     {
         GameObject go=new(value==1?"Green Gem (1)":value==5?"Blue Gem (5)":"Purple Gem (20)"); go.transform.SetParent(parent); go.transform.position=position; SpriteRenderer renderer=go.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=6; CircleCollider2D trigger=go.AddComponent<CircleCollider2D>(); trigger.isTrigger=true; trigger.radius=.55f; go.AddComponent<GreenCrystalCollectible>().Configure(value);
@@ -479,7 +784,7 @@ public static class MineLevelBuilder
         CreatePlatform(challenge,art.Platform,"Bronze Key Perch",keyPosition+Vector2.down*1.25f,3.2f,0);
         GameObject key=new("Hidden Bronze Key"); key.transform.SetParent(challenge); key.transform.position=keyPosition; SpriteRenderer keyRenderer=key.AddComponent<SpriteRenderer>(); keyRenderer.sprite=art.BronzeKey; keyRenderer.sortingOrder=8; key.AddComponent<CircleCollider2D>().isTrigger=true; key.AddComponent<BronzeKeyCollectible>().Configure(levelNumber);
         CreatePlatform(challenge,art.Platform,"Reward Chest Perch",chestPosition+Vector2.down*1.25f,4.2f,0);
-        GameObject chest=new("Bronze Key Reward Chest"); chest.transform.SetParent(challenge); chest.transform.position=chestPosition; SpriteRenderer chestRenderer=chest.AddComponent<SpriteRenderer>(); chestRenderer.sprite=art.Chest; chestRenderer.sortingOrder=8; chest.AddComponent<BoxCollider2D>().isTrigger=true; chest.AddComponent<RewardChest>().Configure(levelNumber);
+        GameObject chest=new("Bronze Key Reward Chest"); chest.transform.SetParent(challenge); chest.transform.position=chestPosition; SpriteRenderer chestRenderer=chest.AddComponent<SpriteRenderer>(); chestRenderer.sprite=art.Chest; chestRenderer.sortingOrder=8; BoxCollider2D chestTrigger=chest.AddComponent<BoxCollider2D>(); chestTrigger.isTrigger=true; chestTrigger.size=new Vector2(2.2f,1.8f); chest.AddComponent<RewardChest>().Configure(levelNumber,art.OpenChest);
     }
 
     private static void CreateSilverKeyChallenge(Transform parent,ArtSet art,Vector2 position)
@@ -520,9 +825,11 @@ public static class MineLevelBuilder
         CreateGem(treasure,art.PurpleGem,purple,20);
     }
 
-    private static void CreateWaypoint(Transform parent,Vector2 position,int order)
+    private static void CreateWaypoint(Transform parent,Vector2 position,int order,
+        AutomatedWaypointMode mode=AutomatedWaypointMode.GroundedLanding,float radius=.65f,
+        bool deployParachute=false,bool requirePowerJump=false)
     {
-        GameObject go=new($"Playtest Waypoint {order:00}"); go.transform.SetParent(parent); go.transform.position=position; go.AddComponent<AutomatedPlaytestWaypoint>().Configure(order);
+        GameObject go=new($"Playtest Waypoint {order:00}"); go.transform.SetParent(parent); go.transform.position=position; go.AddComponent<AutomatedPlaytestWaypoint>().Configure(order,mode,radius,deployParachute,requirePowerJump);
     }
 
     private static void CreateBottomlessPit(Transform parent,string name,float leftEdge,float rightEdge)
@@ -535,6 +842,22 @@ public static class MineLevelBuilder
         GameObject pit=new(name); pit.transform.SetParent(parent); pit.transform.position=new Vector3((safeLeft+safeRight)*.5f,-7,0); BoxCollider2D trigger=pit.AddComponent<BoxCollider2D>(); trigger.isTrigger=true; trigger.size=new Vector2(width,6); pit.AddComponent<DamageZone>().Configure(99);
     }
 
+    private static void CreateLocalBottomlessPit(Transform parent,string name,Bounds leftPlatform,Bounds rightPlatform)
+    {
+        const float edgeClearance=.08f;
+        float left=leftPlatform.max.x+edgeClearance;
+        float right=rightPlatform.min.x-edgeClearance;
+        float width=right-left;
+        if(width<=.25f) throw new InvalidDataException($"{name} has no meaningful visible gap ({width:0.00} units).");
+        float top=Mathf.Min(leftPlatform.max.y,rightPlatform.max.y)-.45f;
+        // A shallow lethal strip catches any fall through the visible gap immediately while
+        // leaving deep parachute shafts free of stale triggers from the preceding section.
+        const float height=2.5f;
+        GameObject pit=new(name); pit.transform.SetParent(parent); pit.transform.position=new Vector3((left+right)*.5f,top-height*.5f,0f);
+        BoxCollider2D trigger=pit.AddComponent<BoxCollider2D>(); trigger.isTrigger=true; trigger.size=new Vector2(width,height);
+        pit.AddComponent<DamageZone>().Configure(99);
+    }
+
     private static void CreateWallsAndAbyss(Transform parent,Vector2 center,float width,float height,bool bottomless)
     {
         CreateBoundary(parent,"Left Mine Wall",center+Vector2.left*width*.5f,new Vector2(1,height)); CreateBoundary(parent,"Right Mine Wall",center+Vector2.right*width*.5f,new Vector2(1,height)); GameObject pit=new(bottomless?"Bottomless Abyss Death Zone":"Respawn Pit"); pit.transform.SetParent(parent); pit.transform.position=new Vector3(center.x,-11,0); BoxCollider2D trigger=pit.AddComponent<BoxCollider2D>(); trigger.isTrigger=true; trigger.size=new Vector2(width,5); pit.AddComponent<DamageZone>().Configure(99);
@@ -543,21 +866,61 @@ public static class MineLevelBuilder
 
     private static void CreateHud(GameObject hero,LevelSpec level,string instruction)
     {
-        Canvas canvas=CreateCanvas("Level HUD"); TextMeshProUGUI title=Text(canvas.transform,"Level Title",$"LEVEL {level.Number}  |  {level.DisplayName}",27,TextAlignmentOptions.Center,Amber); Rect(title.rectTransform,new(.5f,1),new(.5f,1),new(0,-22),new(760,46)); TextMeshProUGUI hearts=Text(canvas.transform,"Heart Display","HEARTS",23,TextAlignmentOptions.Left,Color.white); Rect(hearts.rectTransform,new(0,1),new(0,1),new(22,-22),new(440,42)); TextMeshProUGUI lives=Text(canvas.transform,"Lives Display","LIVES",21,TextAlignmentOptions.Right,Color.white); Rect(lives.rectTransform,new(1,1),new(1,1),new(-22,-22),new(250,42)); hero.GetComponent<PlayerHealth>().ConfigureDisplays(hearts,lives);
-        TextMeshProUGUI status=Text(canvas.transform,"Run Status","FIND THE HIDDEN BRONZE KEY",18,TextAlignmentOptions.Left,new Color32(255,208,112,255)); Rect(status.rectTransform,new(0,1),new(0,1),new(22,-66),new(620,38)); hero.GetComponent<MineRunInventory>().Configure(level.Number,status);
-        TextMeshProUGUI instructions=Text(canvas.transform,"Instructions",instruction,17,TextAlignmentOptions.Center,Color.white); instructions.textWrappingMode=TextWrappingModes.NoWrap; instructions.outlineWidth=.18f; instructions.outlineColor=Color.black; Rect(instructions.rectTransform,new(.5f,0),new(.5f,0),new(0,22),new(1450,42));
+        Canvas canvas=CreateCanvas("Level HUD");
+        TextMeshProUGUI title=Text(canvas.transform,"Level Title",$"LEVEL {level.Number}  |  {level.DisplayName}",27,TextAlignmentOptions.Center,Amber);
+        Rect(title.rectTransform,new(.5f,1),new(.5f,1),new(0,-22),new(760,46));
+        TextMeshProUGUI hearts=Text(canvas.transform,"Heart Display","HEARTS",23,TextAlignmentOptions.Left,Color.white);
+        Rect(hearts.rectTransform,new(0,1),new(0,1),new(22,-22),new(440,42));
+        TextMeshProUGUI lives=Text(canvas.transform,"Lives Display","LIVES",21,TextAlignmentOptions.Right,Color.white);
+        Rect(lives.rectTransform,new(1,1),new(1,1),new(-22,-22),new(250,42));
+        hero.GetComponent<PlayerHealth>().ConfigureDisplays(hearts,lives);
+
+        TextMeshProUGUI status=Text(canvas.transform,"Run Status","FIND THE HIDDEN BRONZE KEY",18,
+            TextAlignmentOptions.Left,new Color32(255,208,112,255));
+        Rect(status.rectTransform,new(0,1),new(0,1),new(22,-66),new(760,38));
+        hero.GetComponent<MineRunInventory>().Configure(level.Number,status);
+
+        string controls=$"{instruction}\n"+
+            "CONTROLLER: STICK / D-PAD MOVE  |  A RUN + B JUMP = POWER JUMP  |  X INTERACT  |  Y POTION  |  START PAUSE  |  BACK SHOP\n"+
+            "KEYBOARD: ARROWS / A-D MOVE  |  SHIFT RUN + SPACE JUMP  |  UP / W INTERACT  |  H POTION  |  ESC PAUSE  |  BACKSPACE SHOP";
+        TextMeshProUGUI instructions=Text(canvas.transform,"Instructions",controls,15,TextAlignmentOptions.Center,Color.white);
+        instructions.textWrappingMode=TextWrappingModes.NoWrap;
+        instructions.outlineWidth=.18f;
+        instructions.outlineColor=Color.black;
+        Rect(instructions.rectTransform,new(.5f,0),new(.5f,0),new(0,48),new(1880,86));
+
+        GameObject pause=Panel(canvas.transform,"Pause Menu",new Color(.025f,.035f,.06f,.97f));
+        Rect((RectTransform)pause.transform,new(.5f,.5f),new(.5f,.5f),Vector2.zero,new(780,520));
+        TextMeshProUGUI pauseTitle=Text(pause.transform,"Pause Heading","PAUSED",52,TextAlignmentOptions.Center,Amber);
+        Rect(pauseTitle.rectTransform,new(.5f,1),new(.5f,1),new(0,-52),new(650,75));
+        TextMeshProUGUI pauseHelp=Text(pause.transform,"Pause Controls",
+            "START / ESC: RESUME     |     BACK / BACKSPACE: RETURN TO OVERVIEW SHOP",18,
+            TextAlignmentOptions.Center,Color.white);
+        Rect(pauseHelp.rectTransform,new(.5f,.5f),new(.5f,.5f),new(0,65),new(720,55));
+        TextMeshProUGUI retreatWarning=Text(pause.transform,"Retreat Warning",
+            "Returning keeps collected rewards but does not complete this level.",17,
+            TextAlignmentOptions.Center,new Color32(205,216,230,255));
+        Rect(retreatWarning.rectTransform,new(.5f,.5f),new(.5f,.5f),new(0,15),new(700,45));
+
+        MineLevelMenuController menu=canvas.gameObject.AddComponent<MineLevelMenuController>();
+        Button resume=CreateActionButton(pause.transform,"Resume Button","RESUME",new Vector2(0,-75),menu.ResumeGame);
+        CreateActionButton(pause.transform,"Return To Shop Button","RETURN TO OVERVIEW / SHOP",
+            new Vector2(0,-165),menu.ReturnToOverview);
+        menu.Configure(pause,resume.gameObject);
+        CreateEventSystem(null);
     }
 
     private static void BuildOverview(Sprite background)
     {
         Scene scene=EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single); Camera camera=CreateCameraBase(new Vector3(0,0,-10)); camera.orthographicSize=5; Canvas canvas=CreateCanvas("Bronze Mines Overview Canvas"); FullImage(canvas.transform,"Bronze Mines Overview Background",background,Color.white); FullImage(canvas.transform,"Readability Overlay",null,new Color(.02f,.03f,.06f,.34f)); TextMeshProUGUI heading=Text(canvas.transform,"Dungeon Heading","DUNGEON 1  —  BRONZE MINES",40,TextAlignmentOptions.Center,Color.white); Rect(heading.rectTransform,new(.5f,1),new(.5f,1),new(0,-28),new(1000,60)); TextMeshProUGUI balance=Text(canvas.transform,"Persistent Balance","",20,TextAlignmentOptions.Center,new Color32(130,255,165,255)); Rect(balance.rectTransform,new(.5f,1),new(.5f,1),new(0,-88),new(1200,40));
-        GameObject levels=Panel(canvas.transform,"Eleven Tunnel Level Map",new Color(.025f,.035f,.06f,.78f)); Rect((RectTransform)levels.transform,new(.5f,.5f),new(.5f,.5f),new(0,-15),new(1540,620)); TextMeshProUGUI mapTitle=Text(levels.transform,"Map Rule","11 TUNNELS  •  VERTICAL → ANGLED → HORIZONTAL",23,TextAlignmentOptions.Center,Amber); Rect(mapTitle.rectTransform,new(.5f,1),new(.5f,1),new(0,-25),new(900,38));
+        GameObject levels=Panel(canvas.transform,"Twelve Tunnel Level Map",new Color(.025f,.035f,.06f,.78f)); Rect((RectTransform)levels.transform,new(.5f,.5f),new(.5f,.5f),new(0,-15),new(1540,620)); TextMeshProUGUI mapTitle=Text(levels.transform,"Map Rule","12 TUNNELS  •  VERTICAL → ANGLED → HORIZONTAL → MIXED FINALE",23,TextAlignmentOptions.Center,Amber); Rect(mapTitle.rectTransform,new(.5f,1),new(.5f,1),new(0,-25),new(1100,38));
+        GameObject firstLevelSelection=null;
         for(int i=0;i<Levels.Length;i++)
         {
-            int row=i<6?0:1; int column=row==0?i:i-6; float spacing=row==0?235:270; float count=row==0?6:5; float x=(column-(count-1)*.5f)*spacing; float y=row==0?115:-115; CreateLevelNode(levels.transform,Levels[i],new Vector2(x,y));
+            int row=i/6; int column=i%6; const float spacing=235f; const float count=6f; float x=(column-(count-1)*.5f)*spacing; float y=row==0?115:-115; Button node=CreateLevelNode(levels.transform,Levels[i],new Vector2(x,y)); if(i==0) firstLevelSelection=node.gameObject;
         }
-        TextMeshProUGUI gate=Text(levels.transform,"Level 11 Gate","LEVEL 11 REQUIRES LEVEL 10 + THE HIDDEN SILVER KEY",18,TextAlignmentOptions.Center,new Color32(210,220,235,255)); Rect(gate.rectTransform,new(.5f,0),new(.5f,0),new(0,22),new(900,35));
-        GameObject shop=Panel(canvas.transform,"Shop Page",new Color(.025f,.035f,.06f,.94f)); Rect((RectTransform)shop.transform,new(.5f,.5f),new(.5f,.5f),new(0,-15),new(860,520)); TextMeshProUGUI shopTitle=Text(shop.transform,"Shop Title","MINER'S SUPPLY SHOP",34,TextAlignmentOptions.Center,Amber); Rect(shopTitle.rectTransform,new(.5f,1),new(.5f,1),new(0,-30),new(700,55)); TextMeshProUGUI status=Text(shop.transform,"Shop Status","Potions restore one heart.",20,TextAlignmentOptions.Center,Color.white); Rect(status.rectTransform,new(.5f,0),new(.5f,0),new(0,28),new(760,45)); MineShopController controller=canvas.gameObject.AddComponent<MineShopController>(); controller.Configure(levels,shop,balance,status); CreateActionButton(shop.transform,"Buy Life",$"EXTRA LIFE  —  {GameProgress.ExtraLifePrice} GREEN GEMS",new Vector2(0,110),controller.BuyExtraLife); CreateActionButton(shop.transform,"Buy Potion",$"HEALTH POTION (+1 HEART)  —  {GameProgress.HealthPotionPrice} GREEN GEMS",new Vector2(0,10),controller.BuyHealthPotion); CreateActionButton(shop.transform,"Buy Heart",$"+1 HEART CAPACITY  —  {GameProgress.HeartUpgradePrice} GREEN GEMS",new Vector2(0,-90),controller.BuyHeartUpgrade); CreateActionButton(canvas.transform,"Levels Tab","LEVELS",new Vector2(-130,-495),controller.ShowLevels); CreateActionButton(canvas.transform,"Shop Tab","SHOP",new Vector2(130,-495),controller.ShowShop); controller.ShowLevels(); new GameObject("EventSystem",typeof(EventSystem),typeof(StandaloneInputModule)); EditorSceneManager.SaveScene(scene,OverviewPath);
+        TextMeshProUGUI gate=Text(levels.transform,"Final Gates","LEVEL 11: FINISH LEVEL 10 + FIND THE SILVER KEY     •     LEVEL 12: FINISH LEVEL 11",18,TextAlignmentOptions.Center,new Color32(210,220,235,255)); Rect(gate.rectTransform,new(.5f,0),new(.5f,0),new(0,22),new(1250,35));
+        GameObject shop=Panel(canvas.transform,"Shop Page",new Color(.025f,.035f,.06f,.94f)); Rect((RectTransform)shop.transform,new(.5f,.5f),new(.5f,.5f),new(0,-15),new(860,520)); TextMeshProUGUI shopTitle=Text(shop.transform,"Shop Title","MINER'S SUPPLY SHOP",34,TextAlignmentOptions.Center,Amber); Rect(shopTitle.rectTransform,new(.5f,1),new(.5f,1),new(0,-30),new(700,55)); TextMeshProUGUI status=Text(shop.transform,"Shop Status","Potions restore one heart.",20,TextAlignmentOptions.Center,Color.white); Rect(status.rectTransform,new(.5f,0),new(.5f,0),new(0,28),new(760,45)); MineShopController controller=canvas.gameObject.AddComponent<MineShopController>(); Button buyLife=CreateActionButton(shop.transform,"Buy Life",$"EXTRA LIFE  —  {GameProgress.ExtraLifePrice} GREEN GEMS",new Vector2(0,110),controller.BuyExtraLife); CreateActionButton(shop.transform,"Buy Potion",$"HEALTH POTION (+1 HEART)  —  {GameProgress.HealthPotionPrice} GREEN GEMS",new Vector2(0,10),controller.BuyHealthPotion); CreateActionButton(shop.transform,"Buy Heart",$"+1 HEART CAPACITY  —  {GameProgress.HeartUpgradePrice} GREEN GEMS",new Vector2(0,-90),controller.BuyHeartUpgrade); CreateActionButton(canvas.transform,"Levels Tab","LEVELS",new Vector2(-130,-495),controller.ShowLevels); CreateActionButton(canvas.transform,"Shop Tab","SHOP",new Vector2(130,-495),controller.ShowShop); controller.Configure(levels,shop,balance,status,firstLevelSelection,buyLife.gameObject); controller.ShowLevels(); CreateEventSystem(firstLevelSelection); EditorSceneManager.SaveScene(scene,OverviewPath);
     }
 
     private static void BuildGameOver(Sprite background)
@@ -574,24 +937,36 @@ public static class MineLevelBuilder
         Rect(heading.rectTransform,new(.5f,1),new(.5f,1),new(0,-55),new(700,90));
         TextMeshProUGUI message=Text(panel.transform,"Out Of Lives Message","OUT OF LIVES",30,TextAlignmentOptions.Center,Color.white);
         Rect(message.rectTransform,new(.5f,.5f),new(.5f,.5f),new Vector2(0,45),new Vector2(600,55));
-        TextMeshProUGUI preserved=Text(panel.transform,"Progress Preserved Message","Your gems, upgrades, keys, and unlocked tunnels are safe.",20,TextAlignmentOptions.Center,new Color32(205,216,230,255));
-        Rect(preserved.rectTransform,new(.5f,.5f),new(.5f,.5f),new Vector2(0,-18),new Vector2(710,48));
+        TextMeshProUGUI resetWarning=Text(panel.transform,"Progress Reset Message","Restart begins a new run and resets gems, upgrades, keys, chests, and unlocked tunnels.",20,TextAlignmentOptions.Center,new Color32(205,216,230,255));
+        Rect(resetWarning.rectTransform,new(.5f,.5f),new(.5f,.5f),new Vector2(0,-18),new Vector2(710,64));
         GameOverController controller=canvas.gameObject.AddComponent<GameOverController>();
-        CreateActionButton(panel.transform,"Restart Button",$"RESTART  -  {GameProgress.StartingLives} LIVES",new Vector2(0,-125),controller.RestartGame);
-        TextMeshProUGUI shortcut=Text(panel.transform,"Restart Shortcut","PRESS ENTER OR SPACE",16,TextAlignmentOptions.Center,new Color32(170,180,195,255));
+        Button restart=CreateActionButton(panel.transform,"Restart Button",$"RESTART  -  {GameProgress.StartingLives} LIVES",new Vector2(0,-125),controller.RestartGame);
+        TextMeshProUGUI shortcut=Text(panel.transform,"Restart Shortcut","PRESS A / ENTER / SPACE",16,TextAlignmentOptions.Center,new Color32(170,180,195,255));
         Rect(shortcut.rectTransform,new(.5f,0),new(.5f,0),new(0,28),new(500,32));
-        new GameObject("EventSystem",typeof(EventSystem),typeof(StandaloneInputModule));
+        CreateEventSystem(restart.gameObject);
         EditorSceneManager.SaveScene(scene,GameOverPath);
     }
 
-    private static void CreateLevelNode(Transform parent,LevelSpec level,Vector2 position)
+    private static Button CreateLevelNode(Transform parent,LevelSpec level,Vector2 position)
     {
         GameObject go=new($"Mineshaft {level.Number}",typeof(RectTransform),typeof(CanvasRenderer),typeof(Image),typeof(Button)); go.transform.SetParent(parent,false); go.GetComponent<Image>().color=new Color32(166,99,48,245); Rect((RectTransform)go.transform,new(.5f,.5f),new(.5f,.5f),position,new(205,104)); TextMeshProUGUI label=Text(go.transform,"Label",$"{level.Number}\n{level.DisplayName}",17,TextAlignmentOptions.Center,Color.white); Stretch(label.rectTransform); go.AddComponent<MineLevelSelectButton>().Configure(level.Number,level.SceneName,level.DisplayName,label);
+        return go.GetComponent<Button>();
     }
 
-    private static void CreateActionButton(Transform parent,string name,string label,Vector2 position,UnityEngine.Events.UnityAction action)
+    private static Button CreateActionButton(Transform parent,string name,string label,Vector2 position,UnityEngine.Events.UnityAction action)
     {
         GameObject go=new(name,typeof(RectTransform),typeof(CanvasRenderer),typeof(Image),typeof(Button)); go.transform.SetParent(parent,false); go.GetComponent<Image>().color=Bronze; UnityEventTools.AddPersistentListener(go.GetComponent<Button>().onClick,action); Rect((RectTransform)go.transform,new(.5f,.5f),new(.5f,.5f),position,new(500,72)); TextMeshProUGUI text=Text(go.transform,"Label",label,20,TextAlignmentOptions.Center,Color.white); Stretch(text.rectTransform);
+        return go.GetComponent<Button>();
+    }
+
+    private static EventSystem CreateEventSystem(GameObject firstSelected)
+    {
+        GameObject go=new("EventSystem",typeof(EventSystem),typeof(InputSystemUIInputModule));
+        EventSystem eventSystem=go.GetComponent<EventSystem>();
+        eventSystem.firstSelectedGameObject=firstSelected;
+        InputSystemUIInputModule inputModule=go.GetComponent<InputSystemUIInputModule>();
+        if(inputModule.actionsAsset==null) inputModule.AssignDefaultActions();
+        return eventSystem;
     }
 
     private static Canvas CreateCanvas(string name) { GameObject go=new(name,typeof(RectTransform),typeof(Canvas),typeof(CanvasScaler),typeof(GraphicRaycaster)); Canvas canvas=go.GetComponent<Canvas>(); canvas.renderMode=RenderMode.ScreenSpaceOverlay; CanvasScaler scaler=go.GetComponent<CanvasScaler>(); scaler.uiScaleMode=CanvasScaler.ScaleMode.ScaleWithScreenSize; scaler.referenceResolution=new Vector2(1920,1080); scaler.matchWidthOrHeight=.5f; return canvas; }
@@ -606,7 +981,7 @@ public static class MineLevelBuilder
         AssetDatabase.ImportAsset(path,ImportAssetOptions.ForceSynchronousImport); TextureImporter importer=AssetImporter.GetAtPath(path) as TextureImporter; if(importer==null) throw new InvalidDataException(path); importer.textureType=TextureImporterType.Sprite; importer.spriteImportMode=SpriteImportMode.Single; importer.spritePixelsPerUnit=ppu; importer.filterMode=FilterMode.Point; importer.mipmapEnabled=false; importer.textureCompression=TextureImporterCompression.Uncompressed; importer.alphaIsTransparency=true; importer.isReadable=readable; importer.maxTextureSize=2048; importer.SaveAndReimport(); return AssetDatabase.LoadAssetAtPath<Sprite>(path);
     }
 
-    private static void CreatePixelAssets() { WritePlatform(); WriteGem(GreenGemPath,new Color32(11,91,56,255),new Color32(32,210,106,255),new Color32(145,255,184,255)); WriteGem(BlueGemPath,new Color32(18,63,139,255),new Color32(46,148,255,255),new Color32(176,230,255,255)); WriteGem(PurpleGemPath,new Color32(74,27,112,255),new Color32(177,72,234,255),new Color32(245,184,255,255)); WriteSpike(); WritePickaxe(); WriteKey(BronzeKeyPath,new Color32(106,58,24,255),new Color32(213,126,54,255),new Color32(255,193,94,255)); WriteKey(SilverKeyPath,new Color32(72,83,101,255),new Color32(172,190,211,255),new Color32(242,250,255,255)); WriteChest(); }
+    private static void CreatePixelAssets() { WritePlatform(); WriteGem(GreenGemPath,new Color32(11,91,56,255),new Color32(32,210,106,255),new Color32(145,255,184,255)); WriteGem(BlueGemPath,new Color32(18,63,139,255),new Color32(46,148,255,255),new Color32(176,230,255,255)); WriteGem(PurpleGemPath,new Color32(74,27,112,255),new Color32(177,72,234,255),new Color32(245,184,255,255)); WriteSpike(); WriteParachute(); WriteKey(BronzeKeyPath,new Color32(106,58,24,255),new Color32(213,126,54,255),new Color32(255,193,94,255)); WriteKey(SilverKeyPath,new Color32(72,83,101,255),new Color32(172,190,211,255),new Color32(242,250,255,255)); WriteChest(); WriteOpenChest(); }
     private static Texture2D Texture(int w,int h) { Texture2D texture=new(w,h,TextureFormat.RGBA32,false); texture.filterMode=FilterMode.Point; texture.SetPixels32(new Color32[w*h]); return texture; }
     private static void Save(Texture2D texture,string path) { texture.Apply(); File.WriteAllBytes(path,texture.EncodeToPNG()); Object.DestroyImmediate(texture); }
     private static void Fill(Texture2D texture,int x0,int y0,int x1,int y1,Color32 color) { for(int y=y0;y<y1;y++) for(int x=x0;x<x1;x++) texture.SetPixel(x,y,color); }
@@ -669,7 +1044,56 @@ public static class MineLevelBuilder
     }
     private static void WriteGem(string path,Color32 dark,Color32 color,Color32 light) { Texture2D t=Texture(32,40); for(int y=2;y<36;y++){int half=y<20?y/3:(38-y)/3;for(int x=16-half;x<=16+half;x++)t.SetPixel(x,y,x<16?dark:color);} Fill(t,16,10,19,29,light); Save(t,path); }
     private static void WriteSpike() { Texture2D t=Texture(40,24); Color32 d=new(63,43,38,255),b=new(179,104,54,255),l=new(239,174,88,255); for(int n=0;n<3;n++){int center=7+n*13;for(int y=3;y<22;y++){int half=(21-y)/4;for(int x=center-half;x<=center+half;x++)t.SetPixel(x,y,x<center?d:b);}t.SetPixel(center,20,l);}Fill(t,1,1,39,4,d);Save(t,SpikePath); }
-    private static void WritePickaxe() { Texture2D t=Texture(28,34); Color32 wood=new(130,76,34,255),metal=new(176,184,184,255),shine=new(238,230,194,255);for(int i=0;i<25;i++){t.SetPixel(12+i/5,3+i,wood);t.SetPixel(13+i/5,3+i,wood);}for(int x=3;x<25;x++){int y=27-Mathf.Abs(14-x)/5;t.SetPixel(x,y,metal);t.SetPixel(x,y+1,shine);}Save(t,PickPath); }
+    private static void WriteParachute()
+    {
+        Texture2D t=Texture(96,64);
+        Color32 dark=new(70,48,38,255),bronze=new(170,92,43,255),light=new(236,157,77,255),silver=new(181,192,199,255),rope=new(154,104,52,255);
+        for(int y=26;y<57;y++)
+        {
+            float normalized=(y-26)/30f;
+            int half=Mathf.RoundToInt(Mathf.Sin(normalized*Mathf.PI*.5f)*43f);
+            for(int x=48-half;x<=48+half;x++)
+            {
+                int panel=Mathf.Clamp((x-(48-half))*5/Mathf.Max(1,half*2+1),0,4);
+                Color32 color=panel%2==0?bronze:dark;
+                if(y>=54) color=light;
+                t.SetPixel(x,y,color);
+            }
+        }
+        for(int rib=-2;rib<=2;rib++)
+        {
+            int targetX=48+rib*18;
+            for(int step=0;step<25;step++)
+            {
+                int x=Mathf.RoundToInt(Mathf.Lerp(48,targetX,step/24f));
+                int y=31+step;
+                t.SetPixel(x,y,silver);
+            }
+        }
+        for(int step=0;step<28;step++)
+        {
+            int left=Mathf.RoundToInt(Mathf.Lerp(10,45,step/27f));
+            int right=Mathf.RoundToInt(Mathf.Lerp(86,51,step/27f));
+            int y=27-step;
+            t.SetPixel(left,y,rope); t.SetPixel(right,y,rope);
+        }
+        Fill(t,43,0,53,4,dark);
+        Save(t,ParachutePath);
+    }
     private static void WriteKey(string path,Color32 dark,Color32 color,Color32 light) { Texture2D t=Texture(36,20); for(int y=5;y<16;y++)for(int x=3;x<14;x++){float dx=x-8,dy=y-10;if(dx*dx+dy*dy<=25&&dx*dx+dy*dy>=9)t.SetPixel(x,y,x<8?dark:color);}Fill(t,12,9,31,13,color);Fill(t,25,5,29,10,color);Fill(t,29,5,33,13,dark);Fill(t,13,10,28,11,light);Save(t,path); }
     private static void WriteChest() { Texture2D t=Texture(44,32); Color32 dark=new(67,38,25,255),wood=new(132,70,35,255),bronze=new(202,121,52,255),light=new(255,184,83,255);Fill(t,3,4,41,26,dark);Fill(t,6,7,38,23,wood);Fill(t,3,14,41,18,bronze);Fill(t,19,12,25,22,light);Fill(t,7,7,37,10,bronze);Save(t,ChestPath); }
+    private static void WriteOpenChest()
+    {
+        Texture2D t=Texture(44,40);
+        Color32 shadow=new(30,20,18,255),dark=new(67,38,25,255),wood=new(132,70,35,255);
+        Color32 bronze=new(202,121,52,255),light=new(255,184,83,255);
+
+        // Raised lid and bright rim make the persisted claimed state unmistakable.
+        Fill(t,4,24,40,35,dark); Fill(t,7,27,37,32,wood); Fill(t,4,23,40,27,bronze);
+        Fill(t,7,25,37,27,light);
+        Fill(t,3,4,41,21,dark); Fill(t,6,7,38,18,wood); Fill(t,5,17,39,23,shadow);
+        Fill(t,3,13,41,17,bronze); Fill(t,19,11,25,19,light);
+        Fill(t,8,20,36,23,new Color32(14,12,14,255));
+        Save(t,OpenChestPath);
+    }
 }

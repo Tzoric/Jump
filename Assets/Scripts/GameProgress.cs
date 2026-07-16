@@ -10,6 +10,7 @@ public static class GameProgress
     private const string HighestUnlockedLevelKey = "Jump.HighestUnlockedLevel";
     private const string SilverKeyKey = "Jump.SilverKey";
 
+    public const int MaxMineLevel = 12;
     public const int StartingLives = 3;
     public const int BaseHearts = 5;
     public const int ExtraLifePrice = 25;
@@ -91,6 +92,24 @@ public static class GameProgress
 
     public static void RestartAfterGameOver()
     {
+        // Game Over starts a genuinely new run. Delete only Jump progression
+        // keys so future non-progression preferences (audio, controls, etc.) are
+        // not accidentally erased with PlayerPrefs.DeleteAll().
+        PlayerPrefs.DeleteKey(CrystalsKey);
+        PlayerPrefs.DeleteKey(LivesKey);
+        PlayerPrefs.DeleteKey(PotionsKey);
+        PlayerPrefs.DeleteKey(HeartsUpgradeKey);
+        PlayerPrefs.DeleteKey(InitializedKey);
+        PlayerPrefs.DeleteKey(HighestUnlockedLevelKey);
+        PlayerPrefs.DeleteKey(SilverKeyKey);
+
+        for (int levelNumber = 1; levelNumber <= MaxMineLevel; levelNumber++)
+        {
+            PlayerPrefs.DeleteKey($"Jump.BronzeKey.{levelNumber}");
+            PlayerPrefs.DeleteKey($"Jump.ChestOpened.{levelNumber}");
+        }
+
+        PlayerPrefs.SetInt(InitializedKey, 1);
         PlayerPrefs.SetInt(LivesKey, StartingLives);
         PlayerPrefs.Save();
     }
@@ -98,7 +117,7 @@ public static class GameProgress
     public static void CompleteLevel(int levelNumber)
     {
         if (levelNumber <= 0) return;
-        int nextLevel = Mathf.Clamp(levelNumber + 1, 2, 11);
+        int nextLevel = Mathf.Clamp(levelNumber + 1, 2, MaxMineLevel);
         if (nextLevel > HighestUnlockedLevel)
         {
             PlayerPrefs.SetInt(HighestUnlockedLevelKey, nextLevel);
@@ -114,8 +133,10 @@ public static class GameProgress
 
     public static bool IsLevelUnlocked(int levelNumber)
     {
+        if (levelNumber < 1 || levelNumber > MaxMineLevel) return false;
         if (levelNumber <= 2) return levelNumber >= 1;
         if (levelNumber == 11) return HasSilverKey && HighestUnlockedLevel >= 11;
+        if (levelNumber == 12) return HasSilverKey && HighestUnlockedLevel >= 12;
         return levelNumber <= HighestUnlockedLevel;
     }
 

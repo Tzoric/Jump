@@ -7,9 +7,17 @@ public sealed class BronzeKeyCollectible : MonoBehaviour
 
     public int LevelNumber => levelNumber;
 
-    public void Configure(int currentLevelNumber) => levelNumber = Mathf.Max(1, currentLevelNumber);
+    public void Configure(int currentLevelNumber)
+    {
+        levelNumber = Mathf.Max(1, currentLevelNumber);
+        if (Application.isPlaying && GameProgress.HasBronzeKey(levelNumber)) gameObject.SetActive(false);
+    }
 
-    private void Awake() => GetComponent<Collider2D>().isTrigger = true;
+    private void Awake()
+    {
+        GetComponent<Collider2D>().isTrigger = true;
+        if (GameProgress.HasBronzeKey(levelNumber)) gameObject.SetActive(false);
+    }
 
     private void OnTriggerEnter2D(Collider2D other)
     {

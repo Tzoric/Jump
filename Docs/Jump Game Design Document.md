@@ -3,7 +3,7 @@
 ## Game Design Document
 
 **Status:** First dungeon production design
-**Version:** 0.4c
+**Version:** 0.6
 **Last updated:** July 15, 2026
 **Working title:** Jump
 
@@ -39,24 +39,35 @@ Jump is a platforming game in which a little miner travels through increasingly 
 ## 2. Core game flow
 
 1. Start at the main screen or dungeon overview.
-2. Choose one of the eleven mineshafts on the Bronze Mines overview.
+2. Choose one of the twelve mineshafts on the Bronze Mines overview.
 3. Enter an unlocked level.
 4. Traverse the tunnel, avoid hazards, and collect optional crystals and keys.
 5. Optionally use the level's bronze key to open its reward chest.
-6. Reach the supported exit door.
+6. Reach the supported exit door and press controller `X`, Up Arrow, or `W`.
 7. Watch the miner visibly walk through the door, complete the level, and return to the overview.
 8. Spend crystals in the overview shop or continue to the next unlocked shaft.
 
-Normal levels unlock sequentially. Level 11 requires both completion of Level 10 and possession of the silver key.
+Normal levels unlock sequentially. Level 11 requires both completion of Level 10 and possession of the silver key. Completing Level 11 unlocks Level 12.
+
+During an active level, the player may press controller Back or Backspace to abandon the attempt and return directly to the `DungeonOverview` Shop. This convenience exit does not complete the level or consume a life, and it preserves all progress that has already been saved. Pause, potion, chest, door, and abandon actions are locked once a death/respawn transition begins so the final-life Game Over flow cannot be bypassed.
 
 ### Controls
 
 | Action | Input | Notes |
 |---|---|---|
-| Move | Arrow keys or `A` / `D` | Base horizontal speed is 7.5 units per second. |
-| Jump | Current project jump input | A grounded press shows an approximately 0.08-second squat before the force-12 impulse; holding after takeoff extends height for up to 0.24 seconds. |
-| Use health potion | `H` | Consumes one potion and restores one heart. |
+| Move | Controller left stick or D-pad; Arrow keys or `A` / `D` | Both Logitech movement controls are supported. Base horizontal speed is 7.5 units per second. |
+| Run | Controller `A`; Left or Right Shift | Hold while moving to run at 9 units per second. |
+| Jump | Controller `B`; Space | A grounded press shows an approximately 0.08-second squat before the ordinary force-12 impulse; holding after takeoff extends height for up to 0.24 seconds. |
+| Power jump | Hold a direction + controller `A` + `B`; hold a direction + Shift + Space | A directional run-jump commits at jump press, uses force 14.75, and supports a 0.26-second held-jump window. |
+| Parachute | Hold controller `B` or Space during a Level 12 descent | Deploys the parachute for a slower, steerable fall; release Jump to fast-drop. Ordinary jump launch is suppressed inside a descent zone. |
+| Open chest | Controller `X`; Up Arrow or `W` | Works only while standing in a chest's interaction range. Contact alone never claims the reward. |
+| Enter exit door | Controller `X`; Up Arrow or `W` | Works while grounded in the exit door's interaction range. Contact alone only displays the exit prompt. |
+| Use health potion | Controller `Y`; `H` | Consumes one potion and restores one heart. |
+| Pause / resume | Start; Escape or `P` | Toggles the in-level pause overlay without changing progress. |
+| Return to shop | Back; Backspace | Immediately returns to the `DungeonOverview` Shop without completing the level or consuming a life. Collected and purchased progress is preserved. |
 | Open inventory | `E` | Reserved for the broader inventory interface. |
+
+For the pictured Logitech F310, use the rear input-mode switch's **X** position for XInput. XInput provides the stable `A`/`B`/`X`/`Y`, Start, and Back layout used above. The game binds both the left stick and D-pad to movement; the F310 Mode button may swap those two hardware controls, but either remains a supported movement source.
 
 ---
 
@@ -67,15 +78,14 @@ Normal levels unlock sequentially. Level 11 requires both completion of Level 10
 - The playable character is a completely redrawn little miner, approximately 125% of the former character's size.
 - The miner wears a dark mining outfit with leather and bronze details.
 - A silver mining helmet is integrated into the character sprite and has a small yellow lamp on its front.
-- The mining pick is smaller than the original accessory, stays aligned to the hand, and moves with the hand rather than floating beside the body.
-- The character, equipment, and animation must match the detail and polish of the cave backgrounds.
+- The Bronze Miner carries no pickaxe. The uncluttered silhouette, clothing, and animation must match the detail and polish of the cave backgrounds.
 
 ### Persistent hero and outfit architecture
 
 - The same recognizable hero identity, face, body proportions, and animation timing persist throughout the game.
 - Dungeon themes change a swappable outfit profile rather than replacing the hero. Initial profiles include the Bronze Miner, a construction worker, and an astronaut.
 - Each outfit supplies compatible directional sprite sets while preserving the same silhouette, attachment points, collider assumptions, and gameplay scale.
-- Hand-held tools may use separate hand-rigged visuals so a pickaxe or later tool can follow the hand without being baked into every body frame. The tool follows the authored hand position through the squat, rise, apex, fall, and landing poses.
+- The outfit system retains a nullable hand-tool attachment for future equipment without forcing a tool into the Bronze Miner profile. When a later profile supplies a tool, its separate hand-rigged visual follows the authored hand position through squat, rise, apex, fall, and landing.
 - The required animation set is side walk, side run, side jump/rise, apex, fall, land, front-facing walk toward the camera, and back-facing walk away from the camera. The current sheet's zero-based row 2 is fixed as frame 0 idle, frame 1 grounded squat, frame 2 rise, frame 3 apex, frame 4 fall, and frame 5 land.
 - Side animations mirror for left and right unless an outfit or tool requires dedicated directional art.
 - Door-entry transitions use the back-facing walk-away animation so the hero visibly walks into the doorway. Front-facing walking supports entrances, reveals, and movement toward the camera.
@@ -83,24 +93,29 @@ Normal levels unlock sequentially. Level 11 requires both completion of Level 10
 ### Movement tuning
 
 - Base side movement is 7.5 units per second, 75% of the original speed. A future speed power-up may restore or exceed the old speed.
+- Holding controller `A` or either Shift key while moving raises horizontal speed to 9 units per second and selects the run animation.
 - Gravity scale is 5.4, approximately 60% of the former value, so ascent and falling are readable beside the slower horizontal movement.
-- Jump force is 12. This is slightly higher than the first slowed-jump pass while remaining proportionate to the 7.5 side speed.
+- An ordinary controller-`B` or Space jump uses force 12 and a 0.24-second held-jump window. This is slightly higher than the first slowed-jump pass while remaining proportionate to the 7.5 side speed.
+- Pressing Jump while a direction and Run are already held commits a power jump before the anticipation squat. The committed jump uses force 14.75 and a 0.26-second held-jump window; releasing Run during the squat does not downgrade it to an ordinary jump.
 - A valid grounded jump press first commits to an approximately 0.08-second anticipation squat; the upward impulse occurs only after that readable pose has appeared.
-- Releasing the button during anticipation does not cancel the committed jump. A quick tap still receives the initial impulse, while continued input after takeoff controls the additional height through the 0.24-second held-jump window.
+- Releasing the button during anticipation does not cancel the committed jump. A quick tap still receives the initial impulse, while continued input after takeoff controls additional height through the ordinary 0.24-second or committed-power 0.26-second held-jump window.
 - The visual sequence transitions directly from grounded squat to rise. The standing pose must not flash after the press, and the squat must not appear for the first time after the miner is airborne.
-- Movement values must be playtested against every required route; normal completion must never require a speed power-up.
+- The hero's solid collider uses a zero-friction 2D physics material. Holding toward a wall, platform side, or ledge must not friction-lock the character; contacted slope materials may still provide their explicitly authored slide behavior.
+- Movement values must be playtested against every required route. Level 10 deliberately requires the built-in run and power-jump controls, but normal completion must never require a purchased or collectible speed power-up.
 
 ---
 
 ## 4. Health, lives, damage, and failure
 
 - The miner starts every level with five full hearts, plus any future permanent heart-capacity upgrades.
+- Filled and missing heart slots use the same supported filled-heart glyph. Missing hearts are shown with a dim color or reduced opacity rather than an outline-heart character that the active font may render as an empty square.
 - A spike hit removes exactly one heart and grants brief damage invulnerability.
 - A health potion restores exactly one missing heart and cannot exceed the current maximum.
 - A new save begins with three lives. A life represents one complete attempt, so the starting balance provides three attempts rather than three respawns after the first attempt.
 - Reaching zero hearts consumes one life. If another life remains, restart the level from its beginning.
 - When the life balance reaches zero, open the dedicated Game Over screen instead of loading the overview. The screen must keep the failed state visible and offer a clear **Restart** button.
-- Restart begins a new three-life run and then returns to the Bronze Mines overview. Saved progression, collected keys, opened chests, currency, potions, and purchased upgrades remain intact.
+- If a zero-life state ever reaches the overview through stale or externally modified save data, redirect it to Game Over rather than allowing another shaft or Shop purchase.
+- Restart clears the failed run and then returns to the Bronze Mines overview with three lives. Level unlocks, collected silver and bronze keys, opened chests, crystals, potions, and purchased heart upgrades all return to their new-save defaults.
 - Falling into a bottomless pit is lethal, consumes the current attempt, and follows the normal life/respawn flow.
 - Level 2's reset ramp is not a bottomless pit. Falling from its upper route makes the player slide back to the ramp's bottom and restart the traversal without spending a life unless spikes reduce health to zero.
 
@@ -111,8 +126,9 @@ Normal levels unlock sequentially. Level 11 requires both completion of Level 10
 ### Doors and completion
 
 - The exit is reached by a grounded player at the end of the intended route.
-- Touching the exit does not instantly hide or teleport the character.
-- Control is briefly locked and a short cutscene visibly walks the miner into the doorway before the overview loads.
+- Touching the exit only displays `PRESS X / UP / W TO EXIT LEVEL`; it does not complete the level, hide the miner, or teleport the character.
+- Pressing controller `X`, Up Arrow, or `W` while grounded in the door's interaction range locks control and starts a short cutscene that visibly walks the miner into the doorway before the overview loads.
+- Pressing controller Back or Backspace is a separate abandon-level action. It returns directly to the `DungeonOverview` Shop without playing the completion cutscene, unlocking the next level, or consuming a life; saved crystals, keys, opened chests, potions, lives, and upgrades remain intact.
 - Every ordinary door must have a solid platform directly beneath it. A floating or unsupported door is allowed only when a level brief explicitly calls for one.
 
 ### Platforms
@@ -131,8 +147,8 @@ Normal levels unlock sequentially. Level 11 requires both completion of Level 10
 
 - The world overview always contains an active rendering camera; it must never display a `No cameras rendering` message.
 - The level camera follows the miner and frames upcoming landings and hazards.
-- Background composition and support art follow each tunnel's direction: vertical shafts emphasize height, angled shafts rise diagonally, and horizontal tunnels emphasize lateral depth.
-- Level 2's background is angled to support the diagonally rising route; each upper platform surface remains horizontal even though the sequence climbs.
+- Background composition and support art follow each tunnel's direction: vertical shafts emphasize height, angled shafts rise diagonally, horizontal tunnels emphasize lateral depth, and downward shafts reveal the pit and upcoming dodge lanes.
+- Levels 2, 5, 8, and 11 use dedicated diagonal-mine artwork in its authored, unrotated orientation. Level 12 uses that same dedicated art in each angled section. Rotating the ordinary vertical/horizontal backdrop is not an acceptable substitute.
 
 ### Difficulty and fairness
 
@@ -145,9 +161,9 @@ Normal levels unlock sequentially. Level 11 requires both completion of Level 10
 
 ## 6. Bronze Mines progression
 
-Dungeon 1 is the **Bronze Mines** and contains eleven levels, one for each tunnel shown on its world overview. All eleven shafts are level-select nodes rather than decorative `coming soon` entrances.
+Dungeon 1 is the **Bronze Mines** and contains twelve levels, one for each tunnel shown on its world overview. All twelve shafts are level-select nodes rather than decorative `coming soon` entrances.
 
-The principal tunnel direction alternates vertical, angled, and horizontal. Level 2 is classified as the angled entry in the cycle because its horizontal-surfaced platforms form a diagonally rising path with a parallel reset ramp.
+Levels 1-11 principally alternate vertical, angled, and horizontal. Level 2 is classified as the angled entry in the cycle because its horizontal-surfaced platforms form a diagonally rising path with a parallel reset ramp. Level 12 deliberately breaks the cycle as a mixed-direction capstone.
 
 | Level | Working name | Direction | Primary challenge |
 |---:|---|---|---|
@@ -160,8 +176,9 @@ The principal tunnel direction alternates vertical, angled, and horizontal. Leve
 | 7 | Furnace Rise | Vertical | An extended vertical endurance climb with combined hazards. |
 | 8 | Razor Ascent | Angled | A long diagonal route with tighter spike timing. |
 | 9 | Abyss Run | Horizontal | The hardest bottomless-pit tunnel before the key challenge. |
-| 10 | Key Vault | Vertical | A long, difficult climb containing the hidden silver key on a hard optional path. |
-| 11 | Treasure Vein | Angled | A silver-key-gated final tunnel with the chapter's hardest optional crystal routes. |
+| 10 | Key Vault | Vertical | A long, difficult climb with required power-jump spike crossings and the hidden silver key on a hard optional path. |
+| 11 | Treasure Vein | Angled | A silver-key-gated treasure tunnel with the chapter's hardest optional crystal routes. |
+| 12 | Deepworks Gauntlet | Mixed | A very long seeded twelve-section capstone with three vertical climbs, three diagonal climbs, three horizontal pit runs, and three parachute descents. |
 
 ### Length and challenge curve
 
@@ -169,6 +186,7 @@ The principal tunnel direction alternates vertical, angled, and horizontal. Leve
 - Vertical levels increase climbing height and landing difficulty.
 - Angled levels increase route length, slide risk, and spike combinations.
 - Horizontal levels use separated platforms over bottomless pits; falling into a pit is lethal.
+- Level 12 mixes every established direction and introduces controlled parachute descents without replacing the default platforming controls outside descent zones.
 - Reused mechanics are combined only after the player has encountered them in a readable form.
 - Main-route checkpoints may be added when playtesting shows that repeated early sections become tedious, but they must not bypass keys or one-time chest state.
 
@@ -192,23 +210,37 @@ The principal tunnel direction alternates vertical, angled, and horizontal. Leve
 
 ### Horizontal tunnel rule
 
-Levels 3, 6, and 9 contain bottomless pits beneath separated horizontal platforms. Pit edges must be visually obvious, camera framing must reveal the intended landing, and the required jump distances must fit default movement. In Level 3 specifically, lethal triggers exist only inside and below visible gaps: standing, landing, or jumping on the authored route must never cause an invisible death.
+Levels 3, 6, and 9 contain bottomless pits beneath separated horizontal platforms, as do Level 12's horizontal sections. Pit edges must be visually obvious, camera framing must reveal the intended landing, and each lethal trigger must remain localized beneath its visible gap. In Level 3 specifically, lethal triggers exist only inside and below visible gaps: standing, landing, or jumping on the authored route must never cause an invisible death.
 
 ### Level 10 silver-key secret
 
 - The one silver key is hidden in Level 10, which satisfies the requirement that it be hidden in another Bronze Mines level before Level 11.
 - Reaching it is deliberately difficult and optional for ordinary Level 10 completion.
+- Level 10's required route teaches and then requires directional power jumps: hold a direction and Run, then press Jump. Its spike crossings are balanced for the 9-unit run and committed force-14.75 jump rather than for an external speed upgrade.
+- Every required Level 10 power-jump landing provides at least 0.25 world units of horizontal safe clearance between the accepted landing area and the nearest damaging spike boundary.
 - Collection persists after leaving the level, including after a later death.
 - The overview clearly distinguishes `complete Level 10` from `find the silver key` when explaining why Level 11 is locked.
 
 ### Level 11 - Treasure Vein
 
 - Level 11 unlocks only after Level 10 is completed and the silver key has been collected.
-- Its required route is the hardest Bronze Mines completion route, but remains possible with default movement.
+- Its required route is the hardest conventional single-direction Bronze Mines route, but remains possible with default movement.
 - It contains many green crystals plus exactly five blue crystals and one purple crystal.
 - Each blue crystal is worth five green crystals.
 - The single purple crystal is worth twenty green crystals and occupies the level's most difficult optional route.
 - The five blue crystals are also placed on exceptionally difficult optional routes. They are not required to complete the level.
+
+### Level 12 - Deepworks Gauntlet
+
+- Completing Level 11 unlocks Level 12. There is no second key gate after the player has passed Level 11's silver-key requirement.
+- The route is a very long twelve-section combination containing exactly three each of vertical-up, angled-up, horizontal, and vertical-down traversal.
+- Section order is shuffled with a stable seed and saved into the built scene. It should feel random and varied while remaining identical across rebuilds, validation, and automated playtests.
+- Horizontal sections retain localized bottomless pits under visible gaps. Their lethal triggers never extend into another section or a required landing corridor.
+- Each downward section clearly teaches the same rule before danger begins: hold Jump to deploy the parachute for a slower fall, release Jump to fast-drop, and steer horizontally to dodge.
+- Downward sections use camouflaged one-heart wall spikes and moving hazards. A hidden spike shows a visible crack, glint, or reveal warning before its damaging collider activates; every hazard arrangement leaves a reachable safe lane.
+- Camera look-ahead shifts downward before and during a drop so hazards are shown with sufficient reaction time. Airborne route waypoints cover the intended dodge lanes and a grounded waypoint confirms each descent landing.
+- Direction-specific background pieces change with the route. Diagonal sections use the dedicated unrotated diagonal-mine art instead of a rotated ordinary backdrop.
+- Level 12 still contains its own optional bronze key and one-time chest, neither of which is required for the exit.
 
 ---
 
@@ -226,8 +258,10 @@ Every Bronze Mines level contains one hidden bronze key and one reward chest.
 ### Chest rules
 
 - A chest remains locked until its same-level bronze key has been collected.
+- Entering interaction range displays either the locked message, `PRESS X / UP / W TO OPEN CHEST`, or `CHEST ALREADY OPENED`; the reward is granted only on a fresh controller-`X`, Up Arrow, or `W` press.
 - Opening consumes the key's use for that chest and permanently records that the chest was opened.
 - A chest can be claimed only once per save; replaying a level cannot farm repeated random rewards.
+- A replayed claimed chest uses a clearly open/empty sprite and keeps its prompt trigger enabled so it explains its state instead of looking like an unresponsive closed chest. Already-collected bronze keys do not reappear.
 - The reward roll is:
 
 | Chance | Reward | Value or effect |
@@ -264,7 +298,7 @@ The shop is available from the main/overview screen and displays the player's cu
 | Extra life | 25 green crystals | Adds one life. |
 | Heart-capacity upgrade | To be balanced | Permanently increases the maximum hearts available in every level by one. |
 
-The initial five-heart maximum remains viable without purchases. Upgrade pricing must be set only after the eleven-level balance pass.
+The initial five-heart maximum remains viable without purchases. Upgrade pricing must be set only after the twelve-level balance pass.
 
 ---
 
@@ -274,14 +308,14 @@ Material names identify whole dungeons, not successive bands inside Dungeon 1.
 
 | Order | Dungeon | Identity | Status |
 |---:|---|---|---|
-| 1 | Bronze Mines | Bronze-veined dark rock, introductory mine machinery, eleven tunnels | In production |
+| 1 | Bronze Mines | Bronze-veined dark rock, introductory mine machinery, twelve tunnels | In production |
 | 2 | Silver Mines | Silver-veined rock and a more advanced mining chapter | Confirmed next dungeon |
 | 3 | Gold Mines | Gold material identity and later-difficulty systems | Provisional |
 | 4 | Ruby and Sapphire Mines | Contrasting red/blue crystal regions | Provisional |
 | 5 | Diamond Mines | High-value late-game mining challenges | Provisional |
 | Later | Surface, atmosphere, moon, planets, sun | Journey beyond the mine sequence | Idea parking lot |
 
-Dungeon 2 starts the silver material theme. Silver is not introduced as an environmental tier inside Bronze Mines Levels 1-11.
+Dungeon 2 starts the silver material theme. Silver is not introduced as an environmental tier inside Bronze Mines Levels 1-12.
 
 ---
 
@@ -289,37 +323,55 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 
 ### Required automated coverage
 
-- The overview renders from an active camera and exposes eleven level nodes.
+- The overview renders from an active camera and exposes twelve level nodes.
 - Locked nodes cannot load early levels through UI interaction.
 - Levels 3-10 unlock sequentially.
 - Level 11 remains locked without both Level 10 completion and the saved silver key.
-- All eleven exits have foundations and use the visible door-entry transition.
-- All eleven levels contain one bronze key and one persisted chest.
+- Level 12 remains locked until Level 11 is completed.
+- All twelve exits have foundations, remain inactive on contact alone, require controller `X` or Up/W, and use the visible door-entry transition.
+- All twelve levels contain one bronze key and one persisted chest.
+- All chests require controller `X` or Up/W, remain closed on contact alone, and restore an unmistakable open state after being claimed.
 - Horizontal levels contain lethal bottomless pit zones.
 - Ordinary stacked platforms satisfy the collider-based headroom rule; every smaller clearance is an explicitly named head-bump challenge.
 - Level 2's varied upper platforms rise diagonally, its ramp remains parallel beneath them, and its upward-facing spikes deal one heart.
 - Level 3 has no lethal trigger intersecting a platform, spawn, required landing, or normal jump corridor.
+- Level 10's required route contains validated directional power jumps, and each accepted landing retains at least 0.25 world units of safe horizontal clearance from damaging spikes.
 - Level 11 contains exactly five blue crystals and one purple crystal, with values 5 and 20.
+- Level 12 contains exactly three sections of each required direction in a reproducible seeded order; its horizontal pits are localized, and its three descents support parachute control, downward camera framing, airborne waypoints, and fair-reveal one-heart hazards.
 - A new save has five hearts per level and three total attempts.
-- Spending the final life loads the Game Over screen; only its Restart action begins a new three-life run and returns to the overview.
+- Spending the final life loads the Game Over screen; only its Restart action clears all progression and economy data, begins a new three-life run, and returns to the overview.
 - Shop prices and potion healing match this document.
 - The default miner can complete every required route without a purchase or power-up.
-- A grounded jump holds row-2 frame 1 for approximately 0.08 seconds before upward velocity begins, then advances directly to frame 2; a quick tap still launches and a held input produces the expected higher arc.
+- Input validation confirms left-stick and D-pad movement; `A`/Shift run; `B`/Space jump; directional `A+B`/Shift+Space power jump; `X`/Up/W interaction; `Y`/H potion; Start/Escape/P pause; and Back/Backspace return-to-shop behavior.
+- A grounded ordinary or power jump holds row-2 frame 1 for approximately 0.08 seconds before upward velocity begins, then advances directly to frame 2; a quick tap still launches, a held input produces the expected higher arc, and a power jump remains committed through its squat.
+- Pausing freezes and resumes level simulation cleanly. Returning home from either running or paused play restores normal time, loads the `DungeonOverview` Shop, preserves saved progress, and grants neither completion nor a life penalty.
+- The hero collider is zero-friction and cannot remain pinned to a wall or platform edge under sustained movement input.
+- Missing hearts render as dim filled-heart glyphs rather than unsupported outline glyphs, the Bronze Miner renders no pickaxe, and a null optional tool remains valid.
+- Levels 2, 5, 8, and 11 plus Level 12's angled sections use dedicated unrotated diagonal-mine artwork.
 
 ### Human playtest focus
 
 - Confirm that the slower side speed and higher jump feel controlled rather than sluggish.
+- Confirm the 9-unit run is visibly faster than the 7.5-unit walk and selects the run animation, and that a directional power jump is distinct without replacing the ordinary jump.
+- On a Logitech F310 in rear-switch X/XInput mode, complete a controller-only pass with both the left stick and D-pad; verify `A`, `B`, `X`, `Y`, Start, and Back match the control table.
 - Confirm the brief squat is readable without making jump input feel delayed, no standing frame flashes between squat and rise, and the squat never appears after takeoff.
 - Confirm that the thin platforms remain readable and their collision matches their artwork.
 - Confirm ordinary jumps have noticeably more overhead clearance, while every deliberate head-bump challenge is clearly telegraphed and documented.
-- Verify the pick stays attached to the moving hand in both facing directions and follows the hand through squat, rise, apex, fall, and landing.
+- Verify the Bronze Miner has no visible pickaxe and that removing the tool does not disturb the body animation or future attachment point.
 - Verify every outfit preserves the hero's recognizable face, scale, collider alignment, and full directional animation contract.
 - Verify door entry selects the back-facing walk-away animation rather than mirroring a side-walk cycle.
 - Verify that Level 2 falls naturally land on the ramp and cannot bypass the intended restart.
 - Verify Level 2 platform widths and both axes of jump spacing vary while the path still reads as a diagonal ascent; confirm every ramp spike points upward.
 - Traverse Level 3 from spawn to exit and land near both edges of every platform to prove no invisible death trigger overlaps the playable route.
 - Verify that bottomless pit deaths are clear and never resemble recoverable Level 2 falls.
-- Spend the final life, verify that no overview load occurs before Game Over is displayed, then verify Restart restores three lives without deleting persistent progress.
+- Verify sustained input against both sides of walls and platform edges cannot friction-lock the miner.
+- Damage the miner and confirm missing health appears as dim filled hearts, never empty font-missing squares.
+- Approach each chest with and without its bronze key; verify contact does not open it, controller `X` or Up/W opens it exactly once when keyed, and replay shows the open sprite plus `CHEST ALREADY OPENED` without recreating the key.
+- Approach every exit and verify contact only shows `PRESS X / UP / W TO EXIT LEVEL`; while grounded, press controller `X` or Up/W and confirm that the back-facing walk-through begins exactly once before the overview loads.
+- Clear every required Level 10 spike crossing with directional power jumps, verify each accepted landing has at least 0.25 world units of safe clearance, and confirm the ordinary jump cannot accidentally masquerade as a validated power jump.
+- Pause and resume with Start, Escape, and `P`. From both live and paused play, use Back or Backspace and verify the Shop opens without completing the level or consuming a life and that all saved progress remains available.
+- Play all three Level 12 descents using both deployed and released parachute states; verify the downward camera reveals every warning, hidden hazards never damage before revealing, moving hazards leave a viable lane, and localized pits do not overlap another section.
+- Spend the final life, verify that no overview load occurs before Game Over is displayed, then verify Restart restores three lives while clearing level unlocks, all keys, chest state, crystals, potions, and heart upgrades.
 - Measure whether later levels are difficult because of mastery rather than excessive repetition.
 
 ---
@@ -330,7 +382,7 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 
 - **Dungeon and level:**
 - **Name:**
-- **Direction:** Vertical / angled / horizontal / explicit hybrid
+- **Direction:** Vertical up / angled up / horizontal / vertical down / explicit hybrid
 - **Purpose and new challenge:**
 - **Target completion time:**
 
@@ -358,10 +410,11 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 - [ ] Required jumps have an appropriate margin for the target difficulty.
 - [ ] Ordinary stacked platforms provide the required hero-collider headroom; any tighter head-bump challenge is explicitly named and documented.
 - [ ] Hazards are visible before they can cause unavoidable damage.
+- [ ] Any descent defines parachute/fast-drop behavior, downward camera framing, and airborne safe-lane waypoints.
 - [ ] The player cannot become permanently trapped.
 - [ ] Horizontal pits are unmistakably lethal; recoverable ramps are unmistakably recoverable.
 - [ ] The bronze key and chest are optional, persisted, and belong to this level.
-- [ ] The exit has a platform and plays the walk-through cutscene.
+- [ ] The exit has a platform, requires controller `X` or Up/W while grounded in range, and then plays the walk-through cutscene.
 - [ ] Crystal colors and values match the economy table.
 - [ ] Automated waypoints cover the intended route.
 
@@ -369,11 +422,11 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 
 ## 12. Open design decisions
 
-1. What should the permanent +1-heart upgrade cost after the eleven-level balance pass?
+1. What should the permanent +1-heart upgrade cost after the twelve-level balance pass?
 2. Should later heart upgrades use a flat or increasing price?
 3. Which new traversal mechanic should distinguish the Silver Mines from the Bronze Mines?
-4. Should later dungeons also contain eleven levels, or use a different tunnel count?
-5. What are the final pause, inventory, and input-remapping controls?
+4. Should later dungeons also contain twelve levels, or use a different tunnel count?
+5. Should a later accessibility pass allow player-remappable controls beyond the confirmed keyboard and Logitech/XInput layout?
 6. Which platforms and intended player age should guide accessibility and storefront decisions?
 
 ---
@@ -393,6 +446,10 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 
 | Version | Date | Change |
 |---|---|---|
+| 0.6 | July 15, 2026 | Added the complete keyboard and Logitech/XInput control layout; introduced 9-unit running and committed force-14.75 directional power jumps; assigned controller actions for interaction, potions, pause, and return to the overview Shop; documented progress-preserving mid-level return; and made Level 10 power jumps and 0.25-unit spike-landing clearance part of validation. |
+| 0.5b | July 15, 2026 | Changed exit doors to the same explicit proximity interaction as chests; contact now shows an exit prompt without completing the level, and automated validation proves explicit input starts the existing walk-through sequence. |
+| 0.5a | July 15, 2026 | Changed reward chests to explicit proximity interaction; added locked, ready, and already-opened HUD feedback; added a distinct persistent open-chest visual; hid collected bronze keys on replay; and added one-time reward regression coverage. |
+| 0.5 | July 15, 2026 | Expanded the Bronze Mines to twelve tunnels; defined Level 12 as a long, reproducibly shuffled twelve-section mixed gauntlet with parachute descents, localized pits, fair-reveal wall spikes, moving hazards, descent-aware cameras, and airborne validation; required dedicated unrotated diagonal artwork; removed the Bronze Miner's pick while retaining optional tool architecture; eliminated wall/ledge sticking with zero-friction hero collision; replaced unsupported empty-heart glyphs with dim filled hearts; and confirmed that Game Over Restart clears all run progress. |
 | 0.4c | July 15, 2026 | Defined the grounded jump-anticipation squat, committed quick-tap behavior, row-2 idle/squat/rise/apex/fall/land order, hand-tool pose tracking, and automated transition checks. |
 | 0.4b | July 15, 2026 | Increased default platform headroom with explicit-only head-bump exceptions, changed Level 2 to a varied diagonally rising upper route over a parallel ramp with upward-facing spikes, added the Level 3 invisible-death regression contract, and routed zero lives through a Restart-capable Game Over screen. |
 | 0.4a | July 14, 2026 | Defined a persistent hero identity, swappable dungeon outfit profiles, hand-rigged tools, and the complete side/front/back animation contract used by gameplay and door entry. |

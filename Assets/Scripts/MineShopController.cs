@@ -1,5 +1,7 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
 
 public sealed class MineShopController : MonoBehaviour
 {
@@ -7,15 +9,39 @@ public sealed class MineShopController : MonoBehaviour
     [SerializeField] private GameObject shopPanel;
     [SerializeField] private TextMeshProUGUI balanceDisplay;
     [SerializeField] private TextMeshProUGUI statusDisplay;
+    [SerializeField] private GameObject levelDefaultSelection;
+    [SerializeField] private GameObject shopDefaultSelection;
 
-    private void OnEnable() => Refresh();
+    private GameObject pendingSelection;
 
-    public void Configure(GameObject levels, GameObject shop, TextMeshProUGUI balance, TextMeshProUGUI status)
+    public GameObject LevelPanel => levelPanel;
+    public GameObject ShopPanel => shopPanel;
+    public bool IsShopVisible => shopPanel != null && shopPanel.activeSelf;
+
+    private void OnEnable()
+    {
+        if (GameProgress.Lives <= 0)
+        {
+            OverviewArrival.Clear();
+            SceneManager.LoadScene("GameOver");
+            return;
+        }
+
+        if (OverviewArrival.ConsumeShopRequest()) ShowShop();
+        else Refresh();
+    }
+
+    private void Start() => SelectPending();
+
+    public void Configure(GameObject levels, GameObject shop, TextMeshProUGUI balance, TextMeshProUGUI status,
+        GameObject firstLevelSelection = null, GameObject firstShopSelection = null)
     {
         levelPanel = levels;
         shopPanel = shop;
         balanceDisplay = balance;
         statusDisplay = status;
+        levelDefaultSelection = firstLevelSelection;
+        shopDefaultSelection = firstShopSelection;
         Refresh();
     }
 
@@ -23,6 +49,7 @@ public sealed class MineShopController : MonoBehaviour
     {
         levelPanel.SetActive(true);
         shopPanel.SetActive(false);
+        Select(levelDefaultSelection);
     }
 
     public void ShowShop()
@@ -31,10 +58,11 @@ public sealed class MineShopController : MonoBehaviour
         shopPanel.SetActive(true);
         statusDisplay.text = "Spend crystals collected in the shafts.";
         Refresh();
+        Select(shopDefaultSelection);
     }
 
     public void BuyExtraLife() => Report(GameProgress.BuyExtraLife(), "Extra life purchased.");
-    public void BuyHealthPotion() => Report(GameProgress.BuyHealthPotion(), "Health potion purchased. Press H in a level to use it.");
+    public void BuyHealthPotion() => Report(GameProgress.BuyHealthPotion(), "Health potion purchased. Press Y or H in a level to use it.");
     public void BuyHeartUpgrade() => Report(GameProgress.BuyHeartUpgrade(), "Permanent heart upgrade purchased.");
 
     private void Report(bool success, string message)
@@ -48,6 +76,20 @@ public sealed class MineShopController : MonoBehaviour
         if (balanceDisplay != null)
         {
             balanceDisplay.text = $"GREEN CRYSTALS  {GameProgress.Crystals}     LIVES  {GameProgress.Lives}     POTIONS  {GameProgress.HealthPotions}";
+        }
+    }
+
+    private void Select(GameObject selection)
+    {
+        pendingSelection = selection;
+        SelectPending();
+    }
+
+    private void SelectPending()
+    {
+        if (pendingSelection != null && EventSystem.current != null && pendingSelection.activeInHierarchy)
+        {
+            EventSystem.current.SetSelectedGameObject(pendingSelection);
         }
     }
 }

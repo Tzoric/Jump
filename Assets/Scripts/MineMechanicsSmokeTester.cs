@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.IO;
+using System.Linq;
 using UnityEngine;
 
 public sealed class MineMechanicsSmokeTester : MonoBehaviour
@@ -25,18 +26,38 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         HeroMovement movement = FindFirstObjectByType<HeroMovement>();
         MinerOutfitVisual outfitVisual = FindFirstObjectByType<MinerOutfitVisual>();
         LevelExitDoor exitDoor = FindFirstObjectByType<LevelExitDoor>();
+        MineRunInventory inventory = FindFirstObjectByType<MineRunInventory>();
+        RewardChest chest = FindFirstObjectByType<RewardChest>();
+        MineLevelMenuController levelMenu = FindFirstObjectByType<MineLevelMenuController>();
         AutomatedPlaytestWaypoint[] waypoints =
             FindObjectsByType<AutomatedPlaytestWaypoint>(FindObjectsSortMode.None);
 
         Rigidbody2D movementBody = movement == null ? null : movement.GetComponent<Rigidbody2D>();
         bool referencesPresent = health != null && weight != null && movement != null && movementBody != null &&
-            outfitVisual != null && exitDoor != null && waypoints.Length == 11;
+            outfitVisual != null && exitDoor != null && inventory != null && chest != null && levelMenu != null &&
+            waypoints.Length == 11;
         bool damagePassed = false;
         bool healingPassed = false;
         bool automatedJumpPassed = false;
         bool jumpAnticipationPassed = false;
+        bool powerRunJumpPassed = false;
+        bool controllerBindingsPassed = MineInput.ControllerRunButton == "A" &&
+            MineInput.ControllerJumpButton == "B" && MineInput.ControllerInteractButton == "X" &&
+            MineInput.ControllerPotionButton == "Y" && MineInput.ControllerPauseButton == "START" &&
+            MineInput.ControllerHomeButton == "BACK";
+        bool pauseMenuPassed = false;
+        bool deathActionLockPassed = false;
         bool weightPassed = false;
         bool exitConfiguredPassed = false;
+        bool exitDoorInteractionPassed = false;
+        bool gameOverProgressResetPassed = VerifyGameOverProgressReset();
+        bool wallContactReleasePassed = false;
+        bool emptyHeartDisplayPassed = false;
+        bool chestInteractionPassed = false;
+        bool pickRemovedPassed = outfitVisual != null && outfitVisual.HandPickaxe == null &&
+            outfitVisual.Outfit != null && outfitVisual.Outfit.HandTool == null &&
+            !FindObjectsByType<Transform>(FindObjectsSortMode.None).Any(transform =>
+                transform.name.IndexOf("pick", StringComparison.OrdinalIgnoreCase) >= 0);
 
         if (referencesPresent)
         {
@@ -126,11 +147,112 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
                 heldJumpHeight > quickTapHeight + .5f;
             jumpAnticipationPassed = showedGroundedSquat && launchedAfterSquat && showedRiseFrame;
 
+            Vector2 beforePowerTestPosition = movementBody.position;
+            Vector2 beforePowerTestVelocity = movementBody.linearVelocity;
+            GameObject runway = new("Smoke Test Power Runway");
+            runway.layer = LayerMask.NameToLayer("Ground");
+            BoxCollider2D runwayCollider = runway.AddComponent<BoxCollider2D>();
+            runwayCollider.size = new Vector2(40f, 1f);
+            runway.transform.position = new Vector2(100f, 100f);
+            movementBody.position = new Vector2(93f, 101.5f);
+            movementBody.linearVelocity = Vector2.zero;
+            Physics2D.SyncTransforms();
+            float runwaySettleDeadline = Time.time + 1f;
+            while (!movement.IsGrounded && Time.time < runwaySettleDeadline) yield return null;
+
+            movement.EnableAutomatedControl(true);
+            movement.SetAutomatedInput(1f, false, false);
+            float walkObservationEnds = Time.time + .18f;
+            while (Time.time < walkObservationEnds) yield return null;
+            bool ordinaryWalkObserved = !movement.IsRunning &&
+                Mathf.Abs(Mathf.Abs(movementBody.linearVelocityX) - movement.WalkSpeed) <= .2f &&
+                outfitVisual.CurrentAnimationRow == 0;
+
+            movement.SetAutomatedInput(1f, false, true);
+            float runObservationEnds = Time.time + .18f;
+            while (Time.time < runObservationEnds) yield return null;
+            bool runObserved = movement.IsRunning &&
+                Mathf.Abs(Mathf.Abs(movementBody.linearVelocityX) - movement.RunSpeed) <= .2f &&
+                outfitVisual.CurrentAnimationRow == 1;
+
+            float powerJumpStartY = movement.transform.position.y;
+            float powerJumpStartX = movement.transform.position.x;
+            float powerHighestY = powerJumpStartY;
+            movement.SetAutomatedInput(1f, true, true);
+            bool committedPowerJump = false;
+            bool powerJumpLaunched = false;
+            float powerInputEnds = Time.time + movement.JumpAnticipationSeconds + movement.PowerJumpHoldSeconds;
+            while (Time.time < powerInputEnds)
+            {
+                committedPowerJump |= movement.IsPreparingJump && movement.IsPowerJumping;
+                powerJumpLaunched |= movementBody.linearVelocityY > movement.JumpForce + .5f;
+                powerHighestY = Mathf.Max(powerHighestY, movement.transform.position.y);
+                yield return null;
+            }
+            movement.SetAutomatedInput(1f, false, true);
+            float powerObservationEnds = Time.time + .5f;
+            while (Time.time < powerObservationEnds)
+            {
+                powerHighestY = Mathf.Max(powerHighestY, movement.transform.position.y);
+                yield return null;
+            }
+
+            float powerJumpHeight = powerHighestY - powerJumpStartY;
+            float powerJumpDistance = Mathf.Abs(movement.transform.position.x - powerJumpStartX);
+            Debug.Log($"POWER RUN SMOKE: walk={ordinaryWalkObserved}, run={runObserved}, " +
+                $"committed={committedPowerJump}, launched={powerJumpLaunched}, " +
+                $"ordinaryHeldHeight={heldJumpHeight:0.00}, powerHeight={powerJumpHeight:0.00}, " +
+                $"powerDistance={powerJumpDistance:0.00}.");
+            powerRunJumpPassed = ordinaryWalkObserved && runObserved && committedPowerJump &&
+                powerJumpLaunched && powerJumpHeight > heldJumpHeight + .5f && powerJumpDistance > 5f;
+            movement.SetAutomatedInput(0f, false);
+            movement.EnableAutomatedControl(false);
+            movementBody.position = beforePowerTestPosition;
+            movementBody.linearVelocity = beforePowerTestVelocity;
+            Destroy(runway);
+            Physics2D.SyncTransforms();
+
+            Vector2 originalPosition = movementBody.position;
+            Vector2 originalVelocity = movementBody.linearVelocity;
+            GameObject wall = new("Smoke Test Vertical Wall");
+            wall.layer = LayerMask.NameToLayer("Ground");
+            BoxCollider2D wallCollider = wall.AddComponent<BoxCollider2D>();
+            wallCollider.size = new Vector2(1f, 14f);
+            Vector2 contactStart = new(7.5f, 14f);
+            Collider2D heroCollider = movement.GetComponentsInChildren<Collider2D>(true)
+                .FirstOrDefault(collider => !collider.isTrigger);
+            wall.transform.position = contactStart + new Vector2(
+                heroCollider == null ? .6f : heroCollider.bounds.extents.x + .48f, 0f);
+            movementBody.position = contactStart;
+            movementBody.linearVelocity = Vector2.zero;
+            Physics2D.SyncTransforms();
+            int healthBeforeWallTest = health.CurrentHealth;
+            int respawnsBeforeWallTest = health.RespawnCount;
+            movement.EnableAutomatedControl(true);
+            movement.SetAutomatedInput(1f, false);
+            float wallStartY = movementBody.position.y;
+            float wallTestEnds = Time.time + .35f;
+            while (Time.time < wallTestEnds) yield return null;
+            wallContactReleasePassed = wallStartY - movementBody.position.y > .6f &&
+                movementBody.linearVelocityY < -1f && health.CurrentHealth == healthBeforeWallTest &&
+                health.RespawnCount == respawnsBeforeWallTest;
+            movement.SetAutomatedInput(0f, false);
+            movement.EnableAutomatedControl(false);
+            movementBody.position = originalPosition;
+            movementBody.linearVelocity = originalVelocity;
+            Destroy(wall);
+            Physics2D.SyncTransforms();
+
             int startingHealth = health.CurrentHealth;
             damagePassed = health.TakeDamage(1, health.transform.position + Vector3.left) &&
                 health.CurrentHealth == startingHealth - 1;
-            health.Heal(1);
-            healingPassed = health.CurrentHealth == startingHealth;
+            emptyHeartDisplayPassed = health.HealthDisplaySupportsHeartGlyph &&
+                health.HealthDisplayText.Contains("<color=#493B45>\u2665") &&
+                !health.HealthDisplayText.Contains("\u2661");
+            GameProgress.AddHealthPotion();
+            int potionsBeforeUse = GameProgress.HealthPotions;
+            healingPassed = health.TryUsePotion() && health.CurrentHealth == startingHealth &&
+                GameProgress.HealthPotions == potionsBeforeUse - 1;
 
             weight.SetCarriedWeight(2f);
             weight.SetWeightMultiplier(0.5f);
@@ -140,11 +262,117 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             weight.ResetPowerUpModifiers();
 
             exitConfiguredPassed = exitDoor.DestinationScene == "DungeonOverview" &&
-                exitDoor.GetComponent<Collider2D>().isTrigger;
+                exitDoor.GetComponent<Collider2D>().enabled &&
+                exitDoor.GetComponent<Collider2D>().isTrigger &&
+                LevelExitDoor.ExitPrompt.Contains("X") && LevelExitDoor.ExitPrompt.Contains("UP") &&
+                LevelExitDoor.ExitPrompt.Contains("W");
+
+            Vector2 beforeChestTest = movementBody.position;
+            movement.EnableAutomatedControl(true);
+            movement.SetAutomatedInput(0f, false);
+            movementBody.position = chest.transform.position;
+            movementBody.linearVelocity = Vector2.zero;
+            Physics2D.SyncTransforms();
+            yield return new WaitForFixedUpdate();
+            yield return new WaitForFixedUpdate();
+
+            int crystalsBefore = GameProgress.Crystals;
+            bool contactDidNotOpen = !chest.IsOpened && GameProgress.Crystals == crystalsBefore;
+            bool lockedInteractionRejected = !chest.TryInteract(inventory, .25f) &&
+                inventory.StatusText == RewardChest.LockedPrompt;
+
+            inventory.CollectBronzeKey();
+            bool openedWithKey = chest.TryInteract(inventory, .25f);
+            Collider2D chestTrigger = chest.GetComponent<Collider2D>();
+            SpriteRenderer chestRenderer = chest.GetComponent<SpriteRenderer>();
+            bool awardedOnce = openedWithKey && GameProgress.Crystals == crystalsBefore + 5 &&
+                chest.IsOpened && GameProgress.IsChestOpened(chest.LevelNumber) &&
+                chest.OpenedSprite != null && chestRenderer.sprite == chest.OpenedSprite &&
+                chestTrigger.enabled && chestTrigger.isTrigger;
+
+            int crystalsAfterOpen = GameProgress.Crystals;
+            bool replayInteractionRejected = !chest.TryInteract(inventory, .99f) &&
+                GameProgress.Crystals == crystalsAfterOpen && inventory.StatusText == RewardChest.OpenedPrompt;
+
+            GameObject replayChestObject = new("Smoke Test Replayed Chest");
+            SpriteRenderer replayRenderer = replayChestObject.AddComponent<SpriteRenderer>();
+            replayRenderer.sprite = chestRenderer.sprite;
+            replayChestObject.AddComponent<BoxCollider2D>().isTrigger = true;
+            RewardChest replayChest = replayChestObject.AddComponent<RewardChest>();
+            replayChest.Configure(chest.LevelNumber, chest.OpenedSprite);
+            bool replayVisualRestored = replayChest.IsOpened && replayRenderer.sprite == chest.OpenedSprite &&
+                replayChestObject.GetComponent<Collider2D>().enabled;
+
+            GameObject replayKeyObject = new("Smoke Test Replayed Bronze Key");
+            replayKeyObject.AddComponent<CircleCollider2D>().isTrigger = true;
+            BronzeKeyCollectible replayKey = replayKeyObject.AddComponent<BronzeKeyCollectible>();
+            replayKey.Configure(chest.LevelNumber);
+            bool collectedKeyStayedHidden = !replayKeyObject.activeSelf;
+
+            chestInteractionPassed = contactDidNotOpen && lockedInteractionRejected && awardedOnce &&
+                replayInteractionRejected && replayVisualRestored && collectedKeyStayedHidden;
+            Destroy(replayChestObject);
+            Destroy(replayKeyObject);
+            movementBody.position = beforeChestTest;
+            movementBody.linearVelocity = Vector2.zero;
+            movement.EnableAutomatedControl(false);
+            Physics2D.SyncTransforms();
+
+            levelMenu.SetPaused(true);
+            bool pausedStateApplied = MineLevelMenuController.IsPaused &&
+                Mathf.Approximately(Time.timeScale, 0f) && levelMenu.PausePanel.activeSelf;
+            levelMenu.ResumeGame();
+            pauseMenuPassed = pausedStateApplied && !MineLevelMenuController.IsPaused &&
+                Mathf.Approximately(Time.timeScale, 1f) && !levelMenu.PausePanel.activeSelf &&
+                levelMenu.HomeScene == MineLevelMenuController.DefaultHomeScene;
+
+            float damageLockDeadline = Time.time + 1.5f;
+            while (health.IsInvulnerable && Time.time < damageLockDeadline) yield return null;
+            int livesBeforeDeathLock = GameProgress.Lives;
+            GameProgress.AddHealthPotion();
+            int potionsBeforeDeathLock = GameProgress.HealthPotions;
+            bool fatalDamageStarted = health.TakeDamage(health.CurrentHealth, health.transform.position);
+            OverviewArrival.Clear();
+            levelMenu.SetPaused(true);
+            levelMenu.ReturnToOverview();
+            bool actionsRejectedDuringDeath = fatalDamageStarted && health.IsRespawning && !health.CanAct &&
+                !MineLevelMenuController.IsPaused && Mathf.Approximately(Time.timeScale, 1f) &&
+                !OverviewArrival.IsShopRequested && !health.TryUsePotion() &&
+                GameProgress.HealthPotions == potionsBeforeDeathLock;
+
+            float respawnLockDeadline = Time.time + 2f;
+            while (health.IsRespawning && Time.time < respawnLockDeadline) yield return null;
+            bool lifeWasConsumed = GameProgress.Lives == livesBeforeDeathLock - 1;
+            bool potionCleanedUp = GameProgress.ConsumePotion();
+            GameProgress.AddLife();
+            deathActionLockPassed = actionsRejectedDuringDeath && !health.IsRespawning && health.CanAct &&
+                lifeWasConsumed && potionCleanedUp && GameProgress.Lives == livesBeforeDeathLock;
+
+            movement.EnableAutomatedControl(true);
+            movement.SetAutomatedInput(0f, false);
+            movementBody.position = (Vector2)exitDoor.transform.position + Vector2.down * .85f;
+            movementBody.linearVelocity = Vector2.zero;
+            Physics2D.SyncTransforms();
+            float doorContactDeadline = Time.time + 2f;
+            while ((!exitDoor.IsPlayerNearby || !movement.IsGrounded) && Time.time < doorContactDeadline)
+            {
+                yield return null;
+            }
+
+            bool doorContactOnlyPrompted = exitDoor.IsPlayerNearby && !exitDoor.IsUsed &&
+                inventory.StatusText == LevelExitDoor.ExitPrompt;
+            bool explicitDoorInteractionStarted = exitDoor.TryInteract(movement);
+            Collider2D heroBodyCollider = movement.GetComponent<Collider2D>();
+            exitDoorInteractionPassed = doorContactOnlyPrompted && explicitDoorInteractionStarted &&
+                exitDoor.IsUsed && movementBody.bodyType == RigidbodyType2D.Kinematic &&
+                heroBodyCollider != null && !heroBodyCollider.enabled;
         }
 
         bool passed = referencesPresent && automatedJumpPassed && jumpAnticipationPassed && damagePassed &&
-            healingPassed && weightPassed && exitConfiguredPassed;
+            healingPassed && weightPassed && exitConfiguredPassed && gameOverProgressResetPassed &&
+            exitDoorInteractionPassed && wallContactReleasePassed && emptyHeartDisplayPassed &&
+            pickRemovedPassed && chestInteractionPassed && powerRunJumpPassed && controllerBindingsPassed &&
+            pauseMenuPassed && deathActionLockPassed;
         string reportPath = ReadArgument("-mechanicsReport") ??
             Path.Combine(Application.dataPath, "..", "Logs", "MineMechanicsSmokeTest.json");
         var result = new SmokeResult
@@ -155,8 +383,18 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             healingPassed = healingPassed,
             automatedJumpPassed = automatedJumpPassed,
             jumpAnticipationPassed = jumpAnticipationPassed,
+            powerRunJumpPassed = powerRunJumpPassed,
+            controllerBindingsPassed = controllerBindingsPassed,
+            pauseMenuPassed = pauseMenuPassed,
+            deathActionLockPassed = deathActionLockPassed,
             weightCalculationPassed = weightPassed,
             exitDoorConfigured = exitConfiguredPassed,
+            exitDoorInteractionPassed = exitDoorInteractionPassed,
+            gameOverProgressResetPassed = gameOverProgressResetPassed,
+            wallContactReleasePassed = wallContactReleasePassed,
+            emptyHeartDisplayPassed = emptyHeartDisplayPassed,
+            pickRemovedPassed = pickRemovedPassed,
+            chestInteractionPassed = chestInteractionPassed,
             waypointCount = waypoints.Length
         };
 
@@ -183,6 +421,44 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         return index >= 0 && index + 1 < arguments.Length ? arguments[index + 1] : null;
     }
 
+    private static bool VerifyGameOverProgressReset()
+    {
+        GameProgress.AddCrystals(100);
+        GameProgress.BuyHealthPotion();
+        GameProgress.BuyHeartUpgrade();
+        GameProgress.AddLife(4);
+        GameProgress.CompleteLevel(9);
+        GameProgress.CollectSilverKey();
+
+        for (int levelNumber = 1; levelNumber <= 12; levelNumber++)
+        {
+            GameProgress.CollectBronzeKey(levelNumber);
+            GameProgress.MarkChestOpened(levelNumber);
+        }
+
+        GameProgress.RestartAfterGameOver();
+
+        if (GameProgress.Lives != GameProgress.StartingLives ||
+            GameProgress.Crystals != 0 ||
+            GameProgress.HealthPotions != 0 ||
+            GameProgress.MaxHearts != GameProgress.BaseHearts ||
+            GameProgress.HighestUnlockedLevel != 2 ||
+            GameProgress.HasSilverKey)
+        {
+            return false;
+        }
+
+        for (int levelNumber = 1; levelNumber <= 12; levelNumber++)
+        {
+            if (GameProgress.HasBronzeKey(levelNumber) || GameProgress.IsChestOpened(levelNumber))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     [Serializable]
     private sealed class SmokeResult
     {
@@ -192,8 +468,18 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         public bool healingPassed;
         public bool automatedJumpPassed;
         public bool jumpAnticipationPassed;
+        public bool powerRunJumpPassed;
+        public bool controllerBindingsPassed;
+        public bool pauseMenuPassed;
+        public bool deathActionLockPassed;
         public bool weightCalculationPassed;
         public bool exitDoorConfigured;
+        public bool exitDoorInteractionPassed;
+        public bool gameOverProgressResetPassed;
+        public bool wallContactReleasePassed;
+        public bool emptyHeartDisplayPassed;
+        public bool pickRemovedPassed;
+        public bool chestInteractionPassed;
         public int waypointCount;
     }
 }

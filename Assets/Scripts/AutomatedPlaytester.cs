@@ -15,6 +15,7 @@ public sealed class AutomatedPlaytester : MonoBehaviour
 
     private HeroMovement hero;
     private LevelExitDoor exitDoor;
+    private MineLevelMenuController levelMenu;
     private float startedAt;
     private float jumpReleaseAt;
     private float nextJumpAt;
@@ -36,10 +37,22 @@ public sealed class AutomatedPlaytester : MonoBehaviour
     private bool goalInitialized;
     private bool usesExitDoor;
     private bool failOnRespawn;
+    private bool failOnDamage;
+    private bool powerRunEnabled;
+    private bool returnHomeMode;
+    private bool traceFirstJump;
+    private bool returnHomeRequested;
     private bool airborneSinceLastWaypoint;
     private bool startSettled;
     private int passAfterWaypoints;
     private string expectedExitSceneName;
+    private float failureHeight = FailureHeight;
+    private int startingUnlockedLevel;
+    private int startingCrystals;
+    private int startingLives;
+    private int startingPotions;
+    private float traceFirstJumpUntil;
+    private float nextJumpTraceAt;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void StartWhenRequested()
@@ -69,7 +82,15 @@ public sealed class AutomatedPlaytester : MonoBehaviour
         // run several physics steps between Updates and artificially shorten the jump arc.
         Time.timeScale = 1f;
         failOnRespawn = Array.IndexOf(Environment.GetCommandLineArgs(), "-playtestFailOnRespawn") >= 0;
+        failOnDamage = Array.IndexOf(Environment.GetCommandLineArgs(), "-playtestFailOnDamage") >= 0;
+        powerRunEnabled = Array.IndexOf(Environment.GetCommandLineArgs(), "-playtestPowerRun") >= 0;
+        returnHomeMode = Array.IndexOf(Environment.GetCommandLineArgs(), "-playtestReturnHome") >= 0;
+        traceFirstJump = Array.IndexOf(Environment.GetCommandLineArgs(), "-playtestTraceFirstJump") >= 0;
         passAfterWaypoints = ReadIntArgument("-playtestPassAfterWaypoints", 0);
+        startingUnlockedLevel = GameProgress.HighestUnlockedLevel;
+        startingCrystals = GameProgress.Crystals;
+        startingLives = GameProgress.Lives;
+        startingPotions = GameProgress.HealthPotions;
         startedAt = Time.unscaledTime;
         nextProgressLogAt = startedAt + 5f;
         startingScenePath = SceneManager.GetActiveScene().path;
@@ -78,6 +99,22 @@ public sealed class AutomatedPlaytester : MonoBehaviour
 
     private void Update()
     {
+        if (returnHomeMode && returnHomeRequested && SceneManager.GetActiveScene().path != startingScenePath)
+        {
+            MineShopController shop = FindFirstObjectByType<MineShopController>();
+            bool preservedProgress = GameProgress.HighestUnlockedLevel == startingUnlockedLevel &&
+                GameProgress.Crystals == startingCrystals && GameProgress.Lives == startingLives &&
+                GameProgress.HealthPotions == startingPotions;
+            bool reachedShop = SceneManager.GetActiveScene().name == MineLevelMenuController.DefaultHomeScene &&
+                shop != null && shop.IsShopVisible && Mathf.Approximately(Time.timeScale, 1f);
+            Finish(reachedShop && preservedProgress,
+                reachedShop && preservedProgress
+                    ? "Returned to the overview shop without completing the level or changing progress."
+                    : "Return-home flow did not preserve progress, restore time, and open the overview shop.",
+                false);
+            return;
+        }
+
         if (usesExitDoor && goalInitialized && SceneManager.GetActiveScene().path != startingScenePath)
         {
             string activeScene = SceneManager.GetActiveScene().name;
@@ -112,6 +149,11 @@ public sealed class AutomatedPlaytester : MonoBehaviour
         {
             lastHealth = health.CurrentHealth;
             lastRespawnCount = health.RespawnCount;
+            if (failOnDamage && health.CurrentHealth < health.MaxHealth)
+            {
+                Finish(false, "The no-damage route regression lost at least one heart.", false);
+                return;
+            }
             if (failOnRespawn && lastRespawnCount > 0)
             {
                 Finish(false, "The safe-route regression playtest lost a life before reaching the exit.", false);
@@ -132,9 +174,29 @@ public sealed class AutomatedPlaytester : MonoBehaviour
             lastMovedAt = Time.unscaledTime;
         }
 
-        if (hero.transform.position.y < FailureHeight)
+        if (returnHomeMode && !returnHomeRequested)
         {
-            Finish(false, $"The player fell below y={FailureHeight}.", false);
+            if (levelMenu == null)
+            {
+                Finish(false, "The level has no pause/home controller.", false);
+                return;
+            }
+
+            levelMenu.SetPaused(true);
+            if (!MineLevelMenuController.IsPaused || !Mathf.Approximately(Time.timeScale, 0f))
+            {
+                Finish(false, "The level could not enter its paused state before returning home.", false);
+                return;
+            }
+
+            returnHomeRequested = true;
+            levelMenu.ReturnToOverview();
+            return;
+        }
+
+        if (hero.transform.position.y < failureHeight)
+        {
+            Finish(false, $"The player fell below y={failureHeight:0.##}.", false);
             return;
         }
 
@@ -179,7 +241,22 @@ public sealed class AutomatedPlaytester : MonoBehaviour
         }
 
         float horizontalDistance = target.position.x - hero.transform.position.x;
-        float horizontal = Mathf.Abs(horizontalDistance) < 0.18f ? 0f : Mathf.Sign(horizontalDistance);
+        if (traceFirstJump && Time.unscaledTime < traceFirstJumpUntil &&
+            Time.unscaledTime >= nextJumpTraceAt)
+        {
+            Rigidbody2D traceBody = hero.GetComponent<Rigidbody2D>();
+            Debug.Log($"AUTOMATED FIRST-JUMP TRACE: player={hero.transform.position}; " +
+                $"target={target.position}; grounded={hero.IsGrounded}; " +
+                $"velocity={(traceBody == null ? Vector2.zero : traceBody.linearVelocity)}; " +
+                $"preparing={hero.IsPreparingJump}; power={hero.IsPowerJumping}.");
+            nextJumpTraceAt = Time.unscaledTime + .08f;
+        }
+        // Feather the virtual left stick near an authored landing instead of crossing
+        // it at full run speed. This models normal player correction and prevents the
+        // regression driver itself from turning a safe landing into a spike overshoot.
+        float horizontal = Mathf.Abs(horizontalDistance) < .12f
+            ? 0f
+            : Mathf.Clamp(horizontalDistance / .65f, -1f, 1f);
 
         if (Vector3.Distance(hero.transform.position, lastMovingPosition) > 0.25f)
         {
@@ -208,8 +285,10 @@ public sealed class AutomatedPlaytester : MonoBehaviour
 
         if (usesExitDoor && waypointIndex < waypoints.Count)
         {
-            Vector2 landingOffset = waypoints[waypointIndex].transform.position - hero.transform.position;
-            if (Mathf.Abs(landingOffset.x) <= .65f && Mathf.Abs(landingOffset.y) <= .3f)
+            AutomatedPlaytestWaypoint currentWaypoint = waypoints[waypointIndex];
+            Vector2 landingOffset = currentWaypoint.transform.position - hero.transform.position;
+            if (currentWaypoint.Mode == AutomatedWaypointMode.GroundedLanding &&
+                Mathf.Abs(landingOffset.x) <= currentWaypoint.ReachRadius && Mathf.Abs(landingOffset.y) <= .3f)
             {
                 // Give a centered landing one quiet frame so physics can settle and the
                 // waypoint can be acknowledged before another automated jump begins.
@@ -218,18 +297,75 @@ public sealed class AutomatedPlaytester : MonoBehaviour
             }
         }
 
-        if (hero.IsGrounded && Time.unscaledTime >= nextJumpAt)
+        if (usesExitDoor && waypointIndex >= waypoints.Count && exitDoor != null)
         {
-            jumpReleaseAt = Time.unscaledTime + hero.JumpAnticipationSeconds + 0.20f;
+            if (exitDoor.IsUsed)
+            {
+                hero.SetAutomatedInput(0f, false);
+                return;
+            }
+
+            if (exitDoor.IsPlayerNearby)
+            {
+                hero.SetAutomatedInput(0f, false);
+                if (hero.IsGrounded && exitDoor.TryInteract(hero))
+                {
+                    Debug.Log("AUTOMATED PLAYTEST: used Interact to enter the exit door.");
+                }
+                return;
+            }
+        }
+
+        bool approachingAirbornePass = usesExitDoor && waypointIndex < waypoints.Count &&
+            waypoints[waypointIndex].Mode == AutomatedWaypointMode.AirbornePass;
+        bool waypointPowerRun = usesExitDoor && waypointIndex < waypoints.Count &&
+            waypoints[waypointIndex].UsePowerJump;
+        bool usePowerRun = powerRunEnabled || waypointPowerRun;
+        bool readyForLaunch = !usesExitDoor || waypointIndex >= waypoints.Count ||
+            IsReadyForRouteJump(target, horizontalDistance);
+        if (hero.IsGrounded && !approachingAirbornePass && readyForLaunch &&
+            Time.unscaledTime >= nextJumpAt)
+        {
+            float heldJumpSeconds = usePowerRun ? hero.PowerJumpHoldSeconds : .20f;
+            jumpReleaseAt = Time.unscaledTime + hero.JumpAnticipationSeconds + heldJumpSeconds;
             nextJumpAt = Time.unscaledTime + 0.45f;
             jumpAttempts++;
+            if (traceFirstJump && jumpAttempts == 1)
+            {
+                traceFirstJumpUntil = Time.unscaledTime + 1.5f;
+                nextJumpTraceAt = Time.unscaledTime;
+            }
             if (jumpAttempts <= 5)
             {
                 Debug.Log($"AUTOMATED PLAYTEST: jump attempt {jumpAttempts} from {hero.transform.position}.");
             }
         }
 
-        hero.SetAutomatedInput(horizontal, Time.unscaledTime < jumpReleaseAt);
+        bool parachuteHeld = approachingAirbornePass && !hero.IsGrounded &&
+            waypoints[waypointIndex].DeployParachute;
+        hero.SetAutomatedInput(horizontal, parachuteHeld || Time.unscaledTime < jumpReleaseAt,
+            usePowerRun && Mathf.Abs(horizontal) >= .5f);
+    }
+
+    private bool IsReadyForRouteJump(Transform target, float horizontalDistance)
+    {
+        if (target == null || target.position.y - hero.transform.position.y <= .8f ||
+            Mathf.Abs(horizontalDistance) <= .8f)
+        {
+            return true;
+        }
+
+        int groundMask = LayerMask.GetMask("Ground");
+        RaycastHit2D support = Physics2D.Raycast(hero.transform.position, Vector2.down, 2f, groundMask);
+        if (support.collider == null) return true;
+
+        // Begin the squat roughly two units before the support edge. The miner keeps
+        // moving during anticipation, so a ledge-edge press would meet the next higher
+        // platform before the body has risen above its side collider.
+        const float launchMargin = 2f;
+        return horizontalDistance > 0f
+            ? hero.transform.position.x >= support.collider.bounds.max.x - launchMargin
+            : hero.transform.position.x <= support.collider.bounds.min.x + launchMargin;
     }
 
     private void FindHeroAndBegin()
@@ -251,11 +387,14 @@ public sealed class AutomatedPlaytester : MonoBehaviour
         }
 
         exitDoor = FindFirstObjectByType<LevelExitDoor>();
+        levelMenu = FindFirstObjectByType<MineLevelMenuController>();
         usesExitDoor = exitDoor != null;
         expectedExitSceneName = usesExitDoor ? exitDoor.DestinationScene : null;
         waypoints.Clear();
         waypoints.AddRange(FindObjectsByType<AutomatedPlaytestWaypoint>(FindObjectsSortMode.None)
             .OrderBy(waypoint => waypoint.Order));
+        if (waypoints.Count > 0)
+            failureHeight = Mathf.Min(FailureHeight, waypoints.Min(waypoint => waypoint.transform.position.y) - 15f);
 
         List<GameObject> collectibles = FindCollectibles();
         initialCollectibleCount = collectibles.Count;
@@ -274,26 +413,37 @@ public sealed class AutomatedPlaytester : MonoBehaviour
 
     private void AdvancePastReachedWaypoints()
     {
-        if (!hero.IsGrounded)
-        {
-            return;
-        }
-
         while (waypointIndex < waypoints.Count)
         {
-            Vector2 offset = waypoints[waypointIndex].transform.position - hero.transform.position;
+            AutomatedPlaytestWaypoint waypoint = waypoints[waypointIndex];
+            Vector2 offset = waypoint.transform.position - hero.transform.position;
+            if (waypoint.Mode == AutomatedWaypointMode.AirbornePass)
+            {
+                if (offset.magnitude > waypoint.ReachRadius) break;
+                Debug.Log($"AUTOMATED PLAYTEST: reached airborne route waypoint {waypoint.Order}.");
+                waypointIndex++;
+                jumpReleaseAt = 0f;
+                nextJumpAt = Time.unscaledTime;
+                continue;
+            }
+
+            if (!hero.IsGrounded) break;
             Rigidbody2D body = hero.GetComponent<Rigidbody2D>();
             bool verticallyAligned = Mathf.Abs(offset.y) <= 0.3f;
             // Reach the authored landing center before advancing. A broad tolerance let the
             // controller launch from ledge tips and collide with the side of the next platform.
-            bool horizontallyAligned = Mathf.Abs(offset.x) <= .65f;
+            bool horizontallyAligned = Mathf.Abs(offset.x) <= waypoint.ReachRadius;
             bool settled = body != null && Mathf.Abs(body.linearVelocity.y) <= .2f;
-            if (!airborneSinceLastWaypoint || !verticallyAligned || !horizontallyAligned || !settled)
+            // Some authored routes deliberately place waypoint 1 on the start shelf. Accept
+            // that settled initial position without requiring a pointless jump in place.
+            bool requiresAirborneArrival = waypointIndex > 0;
+            if ((requiresAirborneArrival && !airborneSinceLastWaypoint) ||
+                !verticallyAligned || !horizontallyAligned || !settled)
             {
                 break;
             }
 
-            Debug.Log($"AUTOMATED PLAYTEST: reached route waypoint {waypoints[waypointIndex].Order}.");
+            Debug.Log($"AUTOMATED PLAYTEST: reached route waypoint {waypoint.Order}.");
             waypointIndex++;
             airborneSinceLastWaypoint = false;
             jumpReleaseAt = 0f;
@@ -337,7 +487,7 @@ public sealed class AutomatedPlaytester : MonoBehaviour
         var result = new PlaytestResult
         {
             scene = startingScenePath,
-            completionMode = usesExitDoor ? "ExitDoor" : "RequiredCrystals",
+            completionMode = returnHomeMode ? "ReturnHome" : usesExitDoor ? "ExitDoor" : "RequiredCrystals",
             passed = passed,
             message = message,
             exitReached = exitReached,

@@ -176,7 +176,7 @@ public sealed class MinerOutfitVisual : MonoBehaviour
                 fps = walkFramesPerSecond;
                 state = 100 + frame;
             }
-            else if (horizontalSpeed > 6.25f)
+            else if (movement != null && movement.IsRunning && horizontalSpeed > .15f)
             {
                 row = 1;
                 fps = runFramesPerSecond;

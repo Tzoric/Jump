@@ -12,15 +12,16 @@ public sealed class DamageZone : MonoBehaviour
     private void OnTriggerEnter2D(Collider2D other)
     {
         PlayerHealth health = other.GetComponentInParent<PlayerHealth>();
-        if (health != null)
+        if (health != null && health.TakeDamage(damage, transform.position))
         {
-            health.TakeDamage(damage, transform.position);
+            Debug.Log($"DAMAGE ZONE HIT: '{name}' at {transform.position} hit the player at {health.transform.position}.");
         }
     }
 
     private void OnTriggerStay2D(Collider2D other)
     {
         PlayerHealth health = other.GetComponentInParent<PlayerHealth>();
-        if (health != null) health.TakeDamage(damage, transform.position);
+        if (health != null && health.TakeDamage(damage, transform.position))
+            Debug.Log($"DAMAGE ZONE STAY: '{name}' at {transform.position} hit the player at {health.transform.position}.");
     }
 }

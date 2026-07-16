@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.SceneManagement;
 
 public static class MineLevelValidator
@@ -14,13 +17,16 @@ public static class MineLevelValidator
     private const string PlatformArt = "Assets/Art/Generated/MineRockBronzePlatform.png";
     private const string MinerArt = "Assets/Art/Generated/MinerCharacterV2.png";
     private const string MinerAnimationArt = "Assets/Art/Generated/MinerAnimationSheet.png";
-    private const string PickArt = "Assets/Art/Generated/MinerPickaxe.png";
+    private const string DiagonalBackdropArt = "Assets/Art/Generated/MineDiagonalBronzeBackdrop.png";
+    private const string ClosedChestArt = "Assets/Art/Generated/BronzeRewardChest.png";
+    private const string OpenChestArt = "Assets/Art/Generated/BronzeRewardChestOpen.png";
 
     private enum ShaftDirection
     {
         Vertical,
         Angled,
-        Horizontal
+        Horizontal,
+        Mixed
     }
 
     private readonly struct LevelExpectation
@@ -53,10 +59,11 @@ public static class MineLevelValidator
         new(8, "Level8_RazorAscent", ShaftDirection.Angled, 14),
         new(9, "Level9_AbyssRun", ShaftDirection.Horizontal, 16),
         new(10, "Level10_KeyVault", ShaftDirection.Vertical, 26),
-        new(11, "Level11_TreasureVein", ShaftDirection.Angled, 18)
+        new(11, "Level11_TreasureVein", ShaftDirection.Angled, 18),
+        new(12, "Level12_DeepworksGauntlet", ShaftDirection.Mixed, 60)
     };
 
-    [MenuItem("Jump/Level Tools/Validate Bronze Mines Levels 1-11")]
+    [MenuItem("Jump/Level Tools/Validate Bronze Mines Levels 1-12")]
     public static void Validate()
     {
         ValidateEconomyRules();
@@ -75,13 +82,14 @@ public static class MineLevelValidator
         ValidateBuildSettings();
 
         EditorSceneManager.OpenScene(Overview, OpenSceneMode.Single);
-        Debug.Log("MINES VALIDATION PASSED: overview, Game Over restart flow, eleven levels, route headroom, Level 2 recovery geometry, safe bottomless pits, progression, economy, and miner presentation are ready.");
+        Debug.Log("MINES VALIDATION PASSED: overview, reset-on-Game-Over flow, twelve levels, mixed Level 12 parachute sections, route headroom, safe pits, progression, economy, and miner presentation are ready.");
     }
 
     private static void ValidateEconomyRules()
     {
         Require(GameProgress.BaseHearts == 5, "A level must begin with five base hearts.");
         Require(GameProgress.StartingLives == 3, "A new game must begin with three lives.");
+        Require(GameProgress.MaxMineLevel == 12, "The Bronze Mines progression contract must include Level 12.");
         Require(GameProgress.HealthPotionPrice == 3, "A health potion must cost three green gems.");
         Require(GameProgress.ExtraLifePrice == 25, "An extra life must cost 25 green gems.");
         Require(Mathf.Approximately(RewardChest.BlueGemChance, .50f), "The chest blue-gem chance must be 50%.");
@@ -90,6 +98,14 @@ public static class MineLevelValidator
         Require(Mathf.Approximately(
             RewardChest.BlueGemChance + RewardChest.PotionChance + RewardChest.ExtraLifeChance, 1f),
             "Chest reward chances must total 100%.");
+        Require(RewardChest.OpenPrompt.Contains("X") && RewardChest.OpenPrompt.Contains("UP") &&
+                RewardChest.OpenPrompt.Contains("W"),
+            "Chest interaction instructions must identify controller X and keyboard Up/W.");
+        Require(MineInput.ControllerRunButton == "A" && MineInput.ControllerJumpButton == "B" &&
+                MineInput.ControllerInteractButton == "X" && MineInput.ControllerPotionButton == "Y" &&
+                MineInput.ControllerPauseButton == "START" && MineInput.ControllerHomeButton == "BACK",
+            "The centralized Logitech/XInput controller contract must remain A run, B jump, X interact, " +
+            "Y potion, Start pause, and Back home.");
     }
 
     private static void ValidatePlatformArtwork()
@@ -173,10 +189,13 @@ public static class MineLevelValidator
         Require(camera.CompareTag("MainCamera"), "Overview camera must use the MainCamera tag.");
         Require(camera.gameObject.GetComponent<AudioListener>() != null, "Overview camera needs its AudioListener.");
         Require(camera.targetTexture == null && camera.targetDisplay == 0, "Overview camera must render to Display 1.");
-        Require(SceneComponents<MineShopController>().Length == 1, "Overview shop is missing or duplicated.");
+        MineShopController[] shops = SceneComponents<MineShopController>();
+        Require(shops.Length == 1 && shops[0].LevelPanel != null && shops[0].ShopPanel != null,
+            "Overview shop is missing, duplicated, or lacks its level/shop panels.");
+        ValidateInputSystemEventSystem("Overview", true);
 
         MineLevelSelectButton[] nodes = SceneComponents<MineLevelSelectButton>();
-        Require(nodes.Length == Levels.Length, "Overview must contain exactly 11 playable mineshaft nodes.");
+        Require(nodes.Length == Levels.Length, "Overview must contain exactly 12 playable mineshaft nodes.");
         foreach (LevelExpectation level in Levels)
         {
             MineLevelSelectButton[] matches = nodes.Where(node => node.LevelNumber == level.Number).ToArray();
@@ -213,6 +232,7 @@ public static class MineLevelValidator
                 restart.onClick.GetPersistentTarget(0) == controllers[0] &&
                 restart.onClick.GetPersistentMethodName(0) == nameof(GameOverController.RestartGame),
             "Game Over Restart button must have one persistent listener targeting GameOverController.RestartGame.");
+        ValidateInputSystemEventSystem("Game Over", true);
     }
 
     private static float ValidateLevel(LevelExpectation level)
@@ -230,6 +250,7 @@ public static class MineLevelValidator
             $"{level.SceneName} hero lacks health, run inventory, or miner presentation.");
         Require(inventory.LevelNumber == level.Number, $"{level.SceneName} run inventory has the wrong level number.");
         ValidateHeroPresentationAndTuning(level, hero, health, outfit);
+        ValidateLevelMenu(level);
 
         AutomatedPlaytestWaypoint[] waypoints = SceneComponents<AutomatedPlaytestWaypoint>();
         Require(waypoints.Length >= level.MinimumWaypoints,
@@ -244,7 +265,7 @@ public static class MineLevelValidator
 
         ValidateDoor(level);
         ValidateKeysAndChest(level);
-        ValidateSpikes(level);
+        ValidateSpikes(level, hero, waypoints);
         ValidatePlatformMaterialsAndThickness(level);
         ValidateOrdinaryHeadroom(level, hero);
 
@@ -273,17 +294,32 @@ public static class MineLevelValidator
         LevelExpectation level, HeroMovement hero, PlayerHealth health, MinerOutfitVisual outfit)
     {
         float speed = SerializedFloat(hero, "speed");
+        float runSpeed = SerializedFloat(hero, "runSpeed");
         float jumpForce = SerializedFloat(hero, "jumpForce");
+        float powerJumpForce = SerializedFloat(hero, "powerJumpForce");
+        float jumpTime = SerializedFloat(hero, "jumpTime");
+        float powerJumpTime = SerializedFloat(hero, "powerJumpTime");
         float jumpAnticipation = SerializedFloat(hero, "jumpAnticipationSeconds");
         Require(Mathf.Abs(speed - 7.5f) <= .05f,
             $"{level.SceneName} hero speed must be the slowed 7.5 target (75% of the original speed)." );
         Require(jumpForce >= 11.5f && jumpForce <= 13f,
             $"{level.SceneName} jump should use the slightly higher, movement-matched 11.5-13 range.");
+        Require(Mathf.Abs(runSpeed - 9f) <= .05f && runSpeed > speed,
+            $"{level.SceneName} A/Shift run speed must be the 9.0 power-run target.");
+        Require(Mathf.Abs(powerJumpForce - 14.75f) <= .05f && powerJumpForce > jumpForce &&
+                Mathf.Abs(jumpTime - .24f) <= .01f && Mathf.Abs(powerJumpTime - .26f) <= .01f,
+            $"{level.SceneName} power jump must use force 14.75 and a .26-second hold window " +
+            "while preserving the ordinary 12/.24 jump.");
         Require(jumpAnticipation >= .06f && jumpAnticipation <= .10f,
             $"{level.SceneName} jump needs a visible 60-100ms grounded squat before takeoff.");
         Rigidbody2D body = hero.GetComponent<Rigidbody2D>();
         Require(body != null && body.gravityScale >= 5f && body.gravityScale <= 5.8f,
             $"{level.SceneName} hero gravity does not match the slower movement tuning.");
+        Collider2D bodyCollider = hero.GetComponentsInChildren<Collider2D>(true)
+            .FirstOrDefault(collider => !collider.isTrigger);
+        Require(bodyCollider != null && bodyCollider.sharedMaterial != null &&
+                bodyCollider.sharedMaterial.friction <= .01f && bodyCollider.sharedMaterial.bounciness <= .01f,
+            $"{level.SceneName} hero needs a zero-friction, zero-bounce collider material so wall contact cannot suspend the miner.");
         Require(hero.transform.lossyScale.x >= 1.75f && hero.transform.lossyScale.x <= 2.1f,
             $"{level.SceneName} miner should remain approximately 125% of the original hero size.");
         Require(SerializedInt(health, "maxHealth") == GameProgress.BaseHearts,
@@ -292,10 +328,7 @@ public static class MineLevelValidator
         SpriteRenderer[] renderers = hero.GetComponentsInChildren<SpriteRenderer>(true);
         SpriteRenderer miner = renderers.FirstOrDefault(renderer =>
             renderer.sprite != null && NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(MinerArt));
-        SpriteRenderer pick = renderers.FirstOrDefault(renderer =>
-            renderer.sprite != null && NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(PickArt));
         Require(miner != null && miner.enabled, $"{level.SceneName} must use the completely remade miner sprite.");
-        Require(pick != null && pick.enabled, $"{level.SceneName} miner needs the separate hand-held pick sprite.");
         Require(outfit.VisualRenderer == miner, $"{level.SceneName} miner outfit is not driving the remade body renderer.");
         CharacterOutfitDefinition definition = outfit.Outfit;
         Require(definition != null && definition.CharacterIdentity == "Main Hero" && definition.OutfitId == "bronze_miner",
@@ -306,13 +339,17 @@ public static class MineLevelValidator
         TextureImporter animationImporter = AssetImporter.GetAtPath(MinerAnimationArt) as TextureImporter;
         Require(animationImporter != null && animationImporter.isReadable,
             "Miner animation sheet must stay readable for runtime frame slicing and future outfit swaps.");
-        Require(pick.transform.IsChildOf(hero.transform), $"{level.SceneName} pick must move as part of the miner hierarchy.");
         SerializedProperty handPickaxe = new SerializedObject(outfit).FindProperty("handPickaxe");
         Transform handRig = handPickaxe?.objectReferenceValue as Transform;
-        Require(handRig != null && (pick.transform == handRig || pick.transform.IsChildOf(handRig)),
-            $"{level.SceneName} smaller pick must be attached to the hand rig animated by MinerOutfitVisual.");
-        Require(pick.bounds.size.magnitude < miner.bounds.size.magnitude * .75f,
-            $"{level.SceneName} mining pick is not visibly smaller than the miner.");
+        Require(definition.HandTool == null && handRig == null && outfit.HandPickaxe == null,
+            $"{level.SceneName} Bronze Miner must not carry the removed pickaxe.");
+        Require(!hero.GetComponentsInChildren<Transform>(true).Any(transform =>
+                transform.name.IndexOf("pick", StringComparison.OrdinalIgnoreCase) >= 0),
+            $"{level.SceneName} still contains a pick or pick-hand rig after pickaxe removal.");
+        ParachuteDescentController parachute = hero.GetComponent<ParachuteDescentController>();
+        Require(parachute != null && renderers.Any(renderer =>
+                renderer.name.IndexOf("parachute", StringComparison.OrdinalIgnoreCase) >= 0 && !renderer.enabled),
+            $"{level.SceneName} hero needs the hidden reusable Level 12 parachute visual.");
         Require(!hero.GetComponentsInChildren<Transform>(true).Any(transform =>
                 transform != hero.transform && (transform.name.IndexOf("hat", StringComparison.OrdinalIgnoreCase) >= 0 ||
                                                 transform.name.IndexOf("helmet", StringComparison.OrdinalIgnoreCase) >= 0)),
@@ -329,7 +366,11 @@ public static class MineLevelValidator
         Require(SerializedFloat(door, "entranceSeconds") >= .5f,
             $"{level.SceneName} door needs a visible walk-in cutscene.");
         Collider2D doorTrigger = door.GetComponent<Collider2D>();
-        Require(doorTrigger != null && doorTrigger.isTrigger, $"{level.SceneName} exit door trigger is missing.");
+        Require(doorTrigger != null && doorTrigger.enabled && doorTrigger.isTrigger,
+            $"{level.SceneName} exit door needs an enabled proximity trigger for Up/W interaction.");
+        Require(LevelExitDoor.ExitPrompt.Contains("X") && LevelExitDoor.ExitPrompt.Contains("UP") &&
+                LevelExitDoor.ExitPrompt.Contains("W") && LevelExitDoor.ExitPrompt.Contains("EXIT"),
+            $"{level.SceneName} exit prompt must clearly identify controller X and keyboard Up/W.");
 
         Transform[] foundations = SceneTransforms()
             .Where(transform => transform.name == "Exit Door Foundation (Required)").ToArray();
@@ -342,6 +383,28 @@ public static class MineLevelValidator
             $"{level.SceneName} door foundation is not positioned directly beneath the door.");
     }
 
+    private static void ValidateLevelMenu(LevelExpectation level)
+    {
+        MineLevelMenuController[] menus = SceneComponents<MineLevelMenuController>();
+        Require(menus.Length == 1, $"{level.SceneName} needs exactly one Start-pause/Back-home controller.");
+        MineLevelMenuController menu = menus[0];
+        Require(menu.HomeScene == MineLevelMenuController.DefaultHomeScene && menu.PausePanel != null &&
+                !menu.PausePanel.activeSelf,
+            $"{level.SceneName} pause controller must target DungeonOverview and start with its panel hidden.");
+
+        TextMeshProUGUI[] labels = menu.PausePanel.GetComponentsInChildren<TextMeshProUGUI>(true);
+        string combinedLabels = string.Join(" ", labels.Select(label => label.text));
+        Require(combinedLabels.Contains("PAUSED") && combinedLabels.Contains("START") &&
+                combinedLabels.Contains("BACK") && combinedLabels.Contains("SHOP"),
+            $"{level.SceneName} pause panel must explain Start resume and Back return-to-shop controls.");
+
+        UnityEngine.UI.Button[] buttons = menu.PausePanel.GetComponentsInChildren<UnityEngine.UI.Button>(true);
+        Require(buttons.Any(button => HasPersistentListener(button, menu, nameof(MineLevelMenuController.ResumeGame))) &&
+                buttons.Any(button => HasPersistentListener(button, menu, nameof(MineLevelMenuController.ReturnToOverview))),
+            $"{level.SceneName} pause panel needs wired Resume and Return to Overview/Shop buttons.");
+        ValidateInputSystemEventSystem(level.SceneName, false);
+    }
+
     private static void ValidateKeysAndChest(LevelExpectation level)
     {
         BronzeKeyCollectible[] bronzeKeys = SceneComponents<BronzeKeyCollectible>();
@@ -350,6 +413,31 @@ public static class MineLevelValidator
             $"{level.SceneName} needs exactly one same-level bronze key.");
         Require(chests.Length == 1 && chests[0].LevelNumber == level.Number,
             $"{level.SceneName} needs exactly one same-level one-time reward chest.");
+
+        RewardChest chest = chests[0];
+        Collider2D chestTrigger = chest.GetComponent<Collider2D>();
+        SpriteRenderer chestRenderer = chest.GetComponent<SpriteRenderer>();
+        Require(chestTrigger != null && chestTrigger.enabled && chestTrigger.isTrigger,
+            $"{level.SceneName} chest needs an enabled proximity trigger for Up/W interaction and replay feedback.");
+        Require(chestRenderer != null && chestRenderer.sprite != null &&
+                NormalizePath(AssetDatabase.GetAssetPath(chestRenderer.sprite)) == NormalizePath(ClosedChestArt),
+            $"{level.SceneName} chest needs the authored closed-chest sprite.");
+        Require(chest.OpenedSprite != null && chest.OpenedSprite != chestRenderer.sprite &&
+                NormalizePath(AssetDatabase.GetAssetPath(chest.OpenedSprite)) == NormalizePath(OpenChestArt),
+            $"{level.SceneName} chest needs a distinct configured opened-chest sprite for replayed levels.");
+
+        Collider2D chestPerch = chest.transform.parent == null ? null :
+            chest.transform.parent.GetComponentsInChildren<Collider2D>(true).FirstOrDefault(collider =>
+                !collider.isTrigger && collider.name == "Reward Chest Perch");
+        Require(chestPerch != null && chestPerch.bounds.max.y < chest.transform.position.y &&
+                chestPerch.bounds.min.x < chest.transform.position.x &&
+                chestPerch.bounds.max.x > chest.transform.position.x,
+            $"{level.SceneName} reward chest must remain visibly supported by its dedicated perch.");
+
+        MineRunInventory[] inventories = SceneComponents<MineRunInventory>();
+        Require(inventories.Length == 1 && inventories[0].LevelNumber == level.Number &&
+                inventories[0].HasStatusDisplay,
+            $"{level.SceneName} hero inventory needs a same-level HUD display for chest prompts.");
 
         SilverKeyCollectible[] silverKeys = SceneComponents<SilverKeyCollectible>();
         Require(silverKeys.Length == (level.Number == 10 ? 1 : 0),
@@ -368,7 +456,8 @@ public static class MineLevelValidator
         }
     }
 
-    private static void ValidateSpikes(LevelExpectation level)
+    private static void ValidateSpikes(LevelExpectation level, HeroMovement hero,
+        AutomatedPlaytestWaypoint[] waypoints)
     {
         DamageZone[] spikes = SceneComponents<DamageZone>()
             .Where(zone => zone.name.IndexOf("spike", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
@@ -381,6 +470,38 @@ public static class MineLevelValidator
         {
             Require(SerializedInt(spike, "damage") == 1,
                 $"{level.SceneName} spike '{spike.name}' must remove exactly one heart per hit.");
+        }
+
+        if (level.Number == 10)
+        {
+            AutomatedPlaytestWaypoint[] landings = waypoints
+                .Where(waypoint => waypoint.Mode == AutomatedWaypointMode.GroundedLanding).ToArray();
+            Require(landings.Length == level.MinimumWaypoints && landings.All(waypoint => waypoint.UsePowerJump),
+                "Level 10 must mark every required shaft jump for the A+B/Shift+Space power-run mechanic.");
+
+            Collider2D heroCollider = hero.GetComponentsInChildren<Collider2D>(true)
+                .FirstOrDefault(collider => !collider.isTrigger);
+            Require(heroCollider != null, "Level 10 hero needs a solid collider for spike-landing clearance checks.");
+            foreach (DamageZone spike in spikes)
+            {
+                Collider2D spikeCollider = spike.GetComponent<Collider2D>();
+                if (spikeCollider == null || landings.Length == 0) continue;
+                AutomatedPlaytestWaypoint nearest = landings.OrderBy(waypoint =>
+                    Mathf.Abs(waypoint.transform.position.y - spike.transform.position.y) +
+                    Mathf.Abs(waypoint.transform.position.x - spike.transform.position.x) * .1f).First();
+                if (Mathf.Abs(nearest.transform.position.y - spike.transform.position.y) > .9f) continue;
+
+                float horizontalClearance = Mathf.Abs(nearest.transform.position.x - spikeCollider.bounds.center.x) -
+                    heroCollider.bounds.extents.x - spikeCollider.bounds.extents.x;
+                Require(horizontalClearance >= .25f,
+                    $"Level 10 landing waypoint {nearest.Order} leaves only {horizontalClearance:0.00} " +
+                    $"clearance from spike '{spike.name}'; at least 0.25 is required.");
+            }
+        }
+        else
+        {
+            Require(waypoints.All(waypoint => !waypoint.UsePowerJump),
+                $"{level.SceneName} must not require the Level 10 power-jump route flag.");
         }
     }
 
@@ -545,8 +666,10 @@ public static class MineLevelValidator
 
         SpriteRenderer backdrop = SceneComponents<SpriteRenderer>().FirstOrDefault(renderer =>
             renderer.name.IndexOf("backdrop", StringComparison.OrdinalIgnoreCase) >= 0);
-        Require(backdrop != null && Mathf.Abs(SignedZ(backdrop.transform.eulerAngles.z)) >= 5f,
-            "Level 2 background artwork must be angled to match the sliding mine shaft.");
+        Require(backdrop != null && backdrop.sprite != null &&
+                NormalizePath(AssetDatabase.GetAssetPath(backdrop.sprite)) == NormalizePath(DiagonalBackdropArt) &&
+                Mathf.Abs(SignedZ(backdrop.transform.eulerAngles.z)) <= 1f,
+            "Level 2 must use the dedicated, natively diagonal mine backdrop without rotating vertical artwork.");
         return Range(upper.Select(platform => platform.bounds.center.x));
     }
 
@@ -578,6 +701,12 @@ public static class MineLevelValidator
                 float horizontal = Range(route.Select(platform => platform.bounds.center.x));
                 float vertical = Range(route.Select(platform => platform.bounds.center.y));
                 Require(horizontal > 15f && vertical > 5f, $"{level.SceneName} does not travel up and across.");
+                SpriteRenderer backdrop = SceneComponents<SpriteRenderer>().FirstOrDefault(renderer =>
+                    renderer.name.IndexOf("backdrop", StringComparison.OrdinalIgnoreCase) >= 0);
+                Require(backdrop != null && backdrop.sprite != null &&
+                        NormalizePath(AssetDatabase.GetAssetPath(backdrop.sprite)) == NormalizePath(DiagonalBackdropArt) &&
+                        Mathf.Abs(SignedZ(backdrop.transform.eulerAngles.z)) <= 1f,
+                    $"{level.SceneName} must use unrotated artwork composed specifically for a diagonal mine.");
                 return horizontal;
             }
             case ShaftDirection.Horizontal:
@@ -592,6 +721,8 @@ public static class MineLevelValidator
                 ValidateHorizontalPits(level, hero, route);
                 return Range(route.Select(platform => platform.bounds.center.x));
             }
+            case ShaftDirection.Mixed:
+                return ValidateLevel12MixedRoute(level);
             default:
                 throw new ArgumentOutOfRangeException();
         }
@@ -692,6 +823,76 @@ public static class MineLevelValidator
         }
     }
 
+    private static float ValidateLevel12MixedRoute(LevelExpectation level)
+    {
+        Require(level.Number == 12, "Mixed-route validation is reserved for Level 12.");
+        Require(SceneComponents<MixedRouteCameraFollow>().Length == 1,
+            "Level 12 needs one velocity-aware mixed-route camera with downward parachute look-ahead.");
+
+        MineRouteSection[] sections = SceneComponents<MineRouteSection>()
+            .OrderBy(section => section.Order).ToArray();
+        Require(sections.Length == 12, "Level 12 must contain exactly twelve ordered mixed-route sections.");
+        for (int index = 0; index < sections.Length; index++)
+        {
+            Require(sections[index].Order == index + 1,
+                $"Level 12 section order is broken at section {index + 1}.");
+            if (index > 0)
+                Require(Vector2.Distance(sections[index - 1].Exit, sections[index].Entry) <= .1f,
+                    $"Level 12 sections {index} and {index + 1} do not connect continuously.");
+        }
+
+        foreach (MineRouteSectionType type in Enum.GetValues(typeof(MineRouteSectionType)))
+            Require(sections.Count(section => section.SectionType == type) == 3,
+                $"Level 12 needs exactly three {type} sections in its seeded mixed order.");
+
+        float pathLength = sections.Sum(section => section.PathLength);
+        Require(pathLength >= 300f,
+            $"Level 12 must remain a very long mixed gauntlet; authored path is only {pathLength:0.0} units.");
+
+        MineRouteSection[] descents = sections.Where(section =>
+            section.SectionType == MineRouteSectionType.VerticalDown).ToArray();
+        Require(descents.All(section => section.Entry.y - section.Exit.y >= 24f),
+            "Every Level 12 downward section must descend at least 24 world units.");
+
+        ParachuteDescentZone[] zones = SceneComponents<ParachuteDescentZone>();
+        Require(zones.Length == 3 && zones.All(zone => zone.MinimumDepth >= 24f),
+            "Level 12 must have one deep parachute zone for each downward section.");
+
+        ProximityHiddenHazard[] hidden = SceneComponents<ProximityHiddenHazard>();
+        Require(hidden.Length >= 12 && hidden.All(hazard =>
+                hazard.RevealDistance >= 9f && hazard.WarningSeconds >= .5f &&
+                SerializedInt(hazard.GetComponent<DamageZone>(), "damage") == 1),
+            "Level 12 hidden descent spikes need long reveal distance, a readable warning, and one-heart damage.");
+
+        OscillatingHazard[] moving = SceneComponents<OscillatingHazard>();
+        Require(moving.Length >= 6 && moving.All(hazard =>
+                hazard.TravelDistance >= 3.5f &&
+                SerializedInt(hazard.GetComponent<DamageZone>(), "damage") == 1),
+            "Level 12 needs visible moving one-heart hazards throughout all descents.");
+
+        AutomatedPlaytestWaypoint[] airborne = SceneComponents<AutomatedPlaytestWaypoint>().Where(waypoint =>
+            waypoint.Mode == AutomatedWaypointMode.AirbornePass).ToArray();
+        Require(airborne.Length >= 12 && airborne.All(waypoint => waypoint.DeployParachute),
+            "Level 12 descents need parachute-enabled airborne safe-lane waypoints around every major hazard.");
+
+        DamageZone[] localPits = SceneComponents<DamageZone>().Where(zone =>
+            zone.name.IndexOf("Level 12 Local Bottomless Pit", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
+        Require(localPits.Length >= 21 && localPits.All(zone => SerializedInt(zone, "damage") >= GameProgress.BaseHearts),
+            "Each Level 12 horizontal section needs visible localized fatal pit coverage.");
+
+        SpriteRenderer[] diagonalBackdrops = SceneComponents<SpriteRenderer>().Where(renderer =>
+            renderer.name.IndexOf("AngledUp Backdrop", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
+        Require(diagonalBackdrops.Length == 3 && diagonalBackdrops.All(renderer =>
+                renderer.sprite != null &&
+                NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(DiagonalBackdropArt) &&
+                Mathf.Abs(SignedZ(renderer.transform.eulerAngles.z)) <= 1f),
+            "All Level 12 angled sections must use the dedicated unrotated diagonal mine artwork.");
+
+        Require(SceneComponents<GreenCrystalCollectible>().Count(gem => gem.Value == 1) >= 20,
+            "The long Level 12 route needs regular green-crystal rewards.");
+        return pathLength;
+    }
+
     private static void ValidateLevel11Treasure(LevelExpectation level)
     {
         if (level.Number != 11)
@@ -731,7 +932,7 @@ public static class MineLevelValidator
         string[] expected = new[] { Overview, GameOver }.Concat(Levels.Select(level => level.Path)).ToArray();
         string[] actual = EditorBuildSettings.scenes.Where(scene => scene.enabled).Select(scene => scene.path).ToArray();
         Require(actual.SequenceEqual(expected),
-            "Build Settings must contain DungeonOverview, GameOver, then Bronze Mines Levels 1-11 in order.");
+            "Build Settings must contain DungeonOverview, GameOver, then Bronze Mines Levels 1-12 in order.");
     }
 
     private static BoxCollider2D[] RoutePlatforms(string routeNameFragment)
@@ -797,6 +998,38 @@ public static class MineLevelValidator
         const float epsilon = .001f;
         return first.min.x < second.max.x - epsilon && first.max.x > second.min.x + epsilon &&
                first.min.y < second.max.y - epsilon && first.max.y > second.min.y + epsilon;
+    }
+
+    private static void ValidateInputSystemEventSystem(string sceneLabel, bool requireInitialSelection)
+    {
+        EventSystem[] eventSystems = SceneComponents<EventSystem>();
+        Require(eventSystems.Length == 1, $"{sceneLabel} must contain exactly one EventSystem.");
+        EventSystem eventSystem = eventSystems[0];
+        InputSystemUIInputModule module = eventSystem.GetComponent<InputSystemUIInputModule>();
+        Require(module != null && module.actionsAsset != null,
+            $"{sceneLabel} EventSystem needs InputSystemUIInputModule actions for stick and D-pad navigation.");
+        Require(eventSystem.GetComponent<StandaloneInputModule>() == null,
+            $"{sceneLabel} must not use the legacy UI module that omits reliable gamepad D-pad navigation.");
+        if (requireInitialSelection)
+        {
+            Require(eventSystem.firstSelectedGameObject != null,
+                $"{sceneLabel} controller navigation needs an initial selected button.");
+        }
+    }
+
+    private static bool HasPersistentListener(UnityEngine.UI.Button button, UnityEngine.Object target,
+        string methodName)
+    {
+        for (int index = 0; index < button.onClick.GetPersistentEventCount(); index++)
+        {
+            if (button.onClick.GetPersistentTarget(index) == target &&
+                button.onClick.GetPersistentMethodName(index) == methodName)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static T[] SceneComponents<T>() where T : Component

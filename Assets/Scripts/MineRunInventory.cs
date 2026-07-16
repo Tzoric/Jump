@@ -8,12 +8,16 @@ public sealed class MineRunInventory : MonoBehaviour
 
     public bool HasBronzeKey => GameProgress.HasBronzeKey(levelNumber);
     public int LevelNumber => levelNumber;
+    public string StatusText => statusDisplay == null ? string.Empty : statusDisplay.text;
+    public bool HasStatusDisplay => statusDisplay != null;
+
+    private void OnEnable() => RefreshProgressStatus();
 
     public void Configure(int currentLevelNumber, TextMeshProUGUI display)
     {
         levelNumber = Mathf.Max(1, currentLevelNumber);
         statusDisplay = display;
-        RefreshKeyStatus();
+        RefreshProgressStatus();
     }
 
     public void CollectBronzeKey()
@@ -32,8 +36,14 @@ public sealed class MineRunInventory : MonoBehaviour
         if (statusDisplay != null) statusDisplay.text = message;
     }
 
-    private void RefreshKeyStatus()
+    public void RestoreProgressStatus() => RefreshProgressStatus();
+
+    private void RefreshProgressStatus()
     {
-        if (statusDisplay != null) statusDisplay.text = HasBronzeKey ? "BRONZE KEY READY" : "FIND THE HIDDEN BRONZE KEY";
+        if (statusDisplay == null) return;
+        if (GameProgress.IsChestOpened(levelNumber)) statusDisplay.text = RewardChest.OpenedPrompt;
+        else statusDisplay.text = HasBronzeKey
+            ? "BRONZE KEY READY - FIND THE CHEST"
+            : "FIND THE HIDDEN BRONZE KEY";
     }
 }

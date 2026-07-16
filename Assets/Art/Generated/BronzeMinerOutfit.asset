@@ -15,4 +15,4 @@ MonoBehaviour:
   characterIdentity: Main Hero
   outfitId: bronze_miner
   animationSheet: {fileID: 21300000, guid: a3f61e94ba89dfe42b560e5c6307da6f, type: 3}
-  handTool: {fileID: 21300000, guid: a262c262408d42d4a9167791008de10e, type: 3}
+  handTool: {fileID: 0}

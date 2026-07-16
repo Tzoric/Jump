@@ -6,6 +6,8 @@ using UnityEngine.Events;
 [RequireComponent(typeof(Rigidbody2D))]
 public sealed class PlayerHealth : MonoBehaviour
 {
+    private const char HeartGlyph = '\u2665';
+
     [Header("Health")]
     [SerializeField, Min(1)] private int maxHealth = 5;
     [SerializeField, Min(0f)] private float invulnerabilitySeconds = 1f;
@@ -31,6 +33,11 @@ public sealed class PlayerHealth : MonoBehaviour
     public int MaxHealth => maxHealth;
     public int RespawnCount { get; private set; }
     public bool IsInvulnerable => Time.time < invulnerableUntil;
+    public bool IsRespawning => respawning;
+    public bool CanAct => currentHealth > 0 && !respawning;
+    public string HealthDisplayText => healthDisplay == null ? string.Empty : healthDisplay.text;
+    public bool HealthDisplaySupportsHeartGlyph => healthDisplay != null && healthDisplay.font != null &&
+        healthDisplay.font.HasCharacter(HeartGlyph, true, true);
 
     private void Awake()
     {
@@ -115,10 +122,14 @@ public sealed class PlayerHealth : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyDown(KeyCode.H) && currentHealth < maxHealth && GameProgress.ConsumePotion())
-        {
-            Heal(1);
-        }
+        if (!MineLevelMenuController.IsPaused && MineInput.PotionPressed) TryUsePotion();
+    }
+
+    public bool TryUsePotion()
+    {
+        if (!CanAct || currentHealth >= maxHealth || !GameProgress.ConsumePotion()) return false;
+        Heal(1);
+        return true;
     }
 
     private IEnumerator DamageFlashRoutine()
@@ -145,6 +156,7 @@ public sealed class PlayerHealth : MonoBehaviour
         respawning = true;
         RespawnCount++;
         bool hasAnotherLife = GameProgress.ConsumeLife();
+        GetComponent<ParachuteDescentController>()?.ResetDescentState();
         if (movement != null)
         {
             movement.enabled = false;
@@ -188,7 +200,9 @@ public sealed class PlayerHealth : MonoBehaviour
     {
         if (healthDisplay != null)
         {
-            healthDisplay.text = $"HEARTS  {new string('♥', currentHealth)}{new string('♡', maxHealth - currentHealth)}";
+            string filled = new(HeartGlyph, currentHealth);
+            string empty = new(HeartGlyph, maxHealth - currentHealth);
+            healthDisplay.text = $"HEARTS  <color=#FF6767>{filled}</color><color=#493B45>{empty}</color>";
         }
 
         if (livesDisplay != null) livesDisplay.text = $"LIVES  {GameProgress.Lives}";
