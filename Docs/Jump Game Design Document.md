@@ -3,7 +3,7 @@
 ## Game Design Document
 
 **Status:** First dungeon production design
-**Version:** 0.7b
+**Version:** 0.8
 **Last updated:** July 16, 2026
 **Working title:** Jump
 
@@ -40,7 +40,7 @@ Jump is a platforming game in which a little miner travels through increasingly 
 
 1. Start at the main screen or dungeon overview.
 2. Choose one of the twelve mineshafts on the Bronze Mines overview.
-3. Enter an unlocked level.
+3. Enter an unlocked level through its supported start door and watch the miner walk out toward the camera before control is enabled.
 4. Traverse the tunnel, avoid hazards, and collect optional crystals and keys.
 5. Optionally use the level's bronze key to open its reward chest.
 6. Reach the supported exit door and press the mapped Interact button (default `X`), Up Arrow, or `W`.
@@ -71,7 +71,7 @@ The overview has three pages: Levels, Shop, and Controls. The Controls page can 
 
 A hidden playtest easter egg is available only on the Levels page. Typing `MINER`, or entering `Up, Up, Down, Down, Left, Right, Left, Right, Down, Up` with neutral releases on the left stick/D-pad, toggles the **Foreman's Master Key**. While active, all twelve Bronze Mines levels are selectable and the overview shows a persistent master-key banner. The key is session-only: it neither advances the saved highest level nor grants the silver key. Entering a tunnel starts an in-memory copy of progression so gems, lives, potions, upgrades, bronze/silver keys, chests, and exits can be tested normally; returning to the overview or restarting after a test Game Over discards that copy. Entering the code again restores the normal story locks.
 
-For the pictured Logitech F310, the rear input-mode switch's **X** position is recommended. XInput provides the stable `A`/`B`/`X`/`Y`, Start, and Back defaults shown above. Other controller layouts can use the mapping screen. The game binds both the left stick and D-pad to movement; the F310 Mode button may swap those two hardware controls, but either remains a supported movement source.
+For the pictured Logitech F310, the rear input-mode switch's **X** position is recommended. XInput provides the stable `A`/`B`/`X`/`Y`, Start, and Back defaults shown above. Other controller layouts can use the mapping screen. The game binds both the left stick and D-pad to movement; the F310 Mode button may swap those two hardware controls, but either remains a supported movement source. When more than one USB controller interface is present, selection follows meaningful stick, D-pad, or button activity and prefers Unity's semantic `Gamepad` device over a simultaneously reported noisy generic `Joystick`; a generic DirectInput controller still receives usable Run, Jump, Interact, Potion, Pause, and Return defaults until remapped.
 
 ---
 
@@ -92,7 +92,7 @@ For the pictured Logitech F310, the rear input-mode switch's **X** position is r
 - The outfit system retains a nullable hand-tool attachment for future equipment without forcing a tool into the Bronze Miner profile. When a later profile supplies a tool, its separate hand-rigged visual follows the authored hand position through squat, rise, apex, fall, and landing.
 - The required animation set is side walk, side run, side jump/rise, apex, fall, land, front-facing walk toward the camera, and back-facing walk away from the camera. The current sheet's zero-based row 2 is fixed as frame 0 idle, frame 1 grounded squat, frame 2 rise, frame 3 apex, frame 4 fall, and frame 5 land.
 - Side animations mirror for left and right unless an outfit or tool requires dedicated directional art.
-- Door-entry transitions use the back-facing walk-away animation so the hero visibly walks into the doorway. Front-facing walking supports entrances, reveals, and movement toward the camera.
+- Door-entry transitions use the back-facing walk-away animation so the hero visibly walks into the doorway. Every level intro uses the front-facing walk-toward-camera animation as the miner emerges from its start door before player control begins.
 
 ### Movement tuning
 
@@ -122,7 +122,7 @@ For the pictured Logitech F310, the rear input-mode switch's **X** position is r
 - When the life balance reaches zero, open the dedicated Game Over screen instead of loading the overview. The screen must keep the failed state visible and offer a clear **Restart** button.
 - If a zero-life state ever reaches the overview through stale or externally modified save data, redirect it to Game Over rather than allowing another shaft or Shop purchase.
 - Restart clears the failed run and then returns to the Bronze Mines overview with three lives. Level unlocks, collected silver and bronze keys, opened chests, crystals, potions, and purchased heart upgrades all return to their new-save defaults.
-- Falling into a bottomless pit is lethal, consumes the current attempt, and follows the normal life/respawn flow.
+- Falling into a bottomless pit is immediately lethal, consumes the current attempt, and follows the normal life/respawn flow. Fatal-fall handling bypasses ordinary one-heart damage invulnerability so a recently damaged miner cannot survive a pit or walk on unintended lower geometry.
 - Level 2's reset ramp is not a bottomless pit. Falling from its upper route makes the player slide back to the ramp's bottom and restart the traversal without spending a life unless spikes reduce health to zero.
 
 ---
@@ -131,11 +131,13 @@ For the pictured Logitech F310, the rear input-mode switch's **X** position is r
 
 ### Doors and completion
 
+- Every level starts at one supported entrance door aligned over a solid start platform. At scene load, control is locked while the miner moves from inside the doorway to the authored gameplay start using the front-facing walk-toward-camera animation; normal physics, collision, input, and the starting checkpoint are restored only after the short intro completes.
+- A start door is an arrival transition rather than an interactable exit. It must not complete, abandon, or reload the level when touched after the intro.
 - The exit is reached by a grounded player at the end of the intended route.
 - Touching the exit only displays the mapped Interact button plus `UP / W`; it does not complete the level, hide the miner, or teleport the character.
 - Pressing mapped Interact (default controller `X`), Up Arrow, or `W` while grounded in the door's interaction range locks control and starts a short cutscene that visibly walks the miner into the doorway before the overview loads.
 - Pressing mapped Return to Shop (default Back) or Backspace is a separate abandon-level action. It returns directly to the `DungeonOverview` Shop without playing the completion cutscene, unlocking the next level, or consuming a life; saved crystals, keys, opened chests, potions, lives, upgrades, and controller mappings remain intact.
-- Every ordinary door must have a solid platform directly beneath it. A floating or unsupported door is allowed only when a level brief explicitly calls for one.
+- Every ordinary entrance and exit door must have a solid platform directly beneath it. A floating or unsupported door is allowed only when a level brief explicitly calls for one.
 
 ### Platforms
 
@@ -155,6 +157,9 @@ For the pictured Logitech F310, the rear input-mode switch's **X** position is r
 - The level camera follows the miner and frames upcoming landings and hazards.
 - Background composition and support art follow each tunnel's direction: vertical shafts emphasize height, angled shafts rise diagonally, horizontal tunnels emphasize lateral depth, and downward shafts reveal the pit and upcoming dodge lanes.
 - Levels 2, 5, 8, and 11 use dedicated diagonal-mine artwork in its authored, unrotated orientation. Level 12 uses that same dedicated art in each angled section. Rotating the ordinary vertical/horizontal backdrop is not an acceptable substitute.
+- Long or mixed routes use modular, route-aware background pieces for horizontal tunnels, vertical climbs, angled climbs, descents, and transitions. Tiles preserve their authored aspect ratio and uniform scale instead of stretching one painting to fit a section, overlap outside the camera frame, and extend far enough left, right, and below the playable route that camera overscan never reveals an empty void.
+- Background-only beams, rails, and rock silhouettes must be subdued enough that they do not read as collidable gameplay objects. Clearly defined shaft walls and bronze-veined foreground rock show the actual traversal boundaries.
+- Player-supplied stick-figure route sketches are accepted as level-composition references. Translate each sketch into an explicit route/waypoint plan, direction changes, hazards, camera framing, collision walls, and modular background assignments before scene construction; do not force gameplay collision to follow incidental detail in a single scenic painting.
 
 ### Difficulty and fairness
 
@@ -241,12 +246,14 @@ Levels 3, 6, and 9 contain bottomless pits beneath separated horizontal platform
 - Completing Level 11 unlocks Level 12. There is no second key gate after the player has passed Level 11's silver-key requirement.
 - The route is a very long twelve-section combination containing exactly three each of vertical-up, angled-up, horizontal, and vertical-down traversal.
 - Section order is shuffled with a stable seed and saved into the built scene. It should feel random and varied while remaining identical across rebuilds, validation, and automated playtests.
-- Horizontal sections retain localized bottomless pits under visible gaps. Their lethal triggers never extend into another section or a required landing corridor.
-- Each downward section clearly teaches the same rule before danger begins: hold mapped Interact or Up/W to deploy the parachute for a slower fall, release it to fast-drop, and steer horizontally to dodge. Space/B remains Jump.
+- Horizontal sections retain localized bottomless pits under visible gaps. Their fatal-fall triggers never extend into another section or a required landing corridor, and a safely low global abyss catches any off-route fall before the miner can stand on unintended lower geometry.
+- A horizontal-to-descent transition ends on a broad, visible launch shelf rather than an ambiguous pit. The shaft's clearly defined opening is beyond the shelf's right edge, with enough room to approach, stop, and intentionally step off.
+- Each downward section clearly teaches the same rule before danger begins: hold mapped Interact or Up/W to deploy the parachute for a slower fall, release it to fast-drop, and steer horizontally to dodge. Space/B remains Jump and is never suppressed merely because the miner entered or landed inside a descent trigger.
+- A descent trigger may display its prompt on the approach, but parachute physics and descent-camera framing begin only after the miner is airborne and actually falling. Landing or walking through the trigger does not consume Jump or redeploy the canopy.
 - Downward sections use camouflaged one-heart wall spikes and moving hazards. A hidden spike shows a visible crack, glint, or reveal warning before its damaging collider activates; every hazard arrangement leaves a reachable safe lane.
-- The camera begins at the miner, uses a vertical dead zone outside descents, centers on the shaft during a drop, and shifts down only for an active descent. Framing must retain the enlarged canopy while revealing hazards with sufficient reaction time.
+- The camera begins at the miner, uses a vertical dead zone and velocity look-ahead outside descents, and smoothly blends toward shaft-centered downward framing only during an active airborne descent. It must not bounce between thresholds at the approach or snap when the parachute is deployed; framing retains the enlarged canopy while revealing hazards with sufficient reaction time.
 - Every chute trigger ends above the landing stance and outgoing ledges. Nonterminal shafts provide a clearly illustrated lower-right breakout: the matching wall collider ends above the first two outgoing ledges, the first ledge begins beyond the landing shelf instead of forming a low ceiling over it, and the final fixed spike stays on the opposite wall.
-- Direction-specific background pieces change with the route. Downward sections use a cool-dark dedicated shaft layer above neighboring backdrops plus visible bronze-veined rock walls aligned with collision. Diagonal sections use the dedicated unrotated diagonal-mine art instead of a rotated ordinary backdrop.
+- Direction-specific modular background pieces change with the route and retain uniform scale rather than being stretched across each section. Tiled overscan covers the camera left, right, and below every route. Downward sections use a cool-dark dedicated shaft layer above neighboring backdrops plus visible bronze-veined rock walls aligned with collision. Diagonal sections use the dedicated unrotated diagonal-mine art instead of a rotated ordinary backdrop.
 - Level 12 still contains its own optional bronze key and one-time chest, neither of which is required for the exit.
 
 ---
@@ -335,33 +342,34 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 - Levels 3-10 unlock sequentially.
 - Level 11 remains locked without both Level 10 completion and the saved silver key.
 - Level 12 remains locked until Level 11 is completed.
-- All twelve exits have foundations, remain inactive on contact alone, require mapped Interact or Up/W, and use the visible door-entry transition.
+- All twelve levels have one supported entrance that locks input for a front-facing walk-out intro and restores the authored gameplay start/checkpoint afterward. All twelve exits have foundations, remain inactive on contact alone, require mapped Interact or Up/W, and use the visible door-entry transition.
 - All twelve levels contain one bronze key and one persisted chest.
 - All chests require mapped Interact or Up/W, remain closed on contact alone, and restore an unmistakable open state after being claimed.
-- Horizontal levels contain lethal bottomless pit zones.
+- Horizontal levels contain fatal bottomless pit zones that remain lethal during ordinary damage invulnerability.
 - Ordinary stacked platforms satisfy the collider-based headroom rule; every smaller clearance is an explicitly named head-bump challenge.
 - Level 2's varied upper platforms rise diagonally, its ramp remains parallel beneath them, and its upward-facing spikes deal one heart.
 - Every Bronze Mines spike uses three inset polygon paths aligned to its visible teeth. Automated overlap checks hit each tooth center and reject both transparent valleys, including on rotated and scaled variants.
 - Level 3 has no lethal trigger intersecting a platform, spawn, required landing, or normal jump corridor.
 - Level 10's required route contains validated directional power jumps, and each accepted landing retains at least 0.25 world units of safe horizontal clearance from damaging spikes.
 - Level 11 contains exactly five blue crystals and one purple crystal, with values 5 and 20.
-- Level 12 contains exactly three sections of each required direction in a reproducible seeded order; its horizontal pits are localized, and its three descents support parachute control, downward camera framing, airborne waypoints, and fair-reveal one-heart hazards.
+- Level 12 contains exactly three sections of each required direction in a reproducible seeded order; its horizontal pits are localized, its safely low global abyss catches off-route falls, and its three descents support independent Jump, contextual parachute control, smoothly blended downward camera framing, airborne waypoints, readable launch/landing transitions, and fair-reveal one-heart hazards.
 - A new save has five hearts per level and three total attempts.
 - Spending the final life loads the Game Over screen; only its Restart action clears all progression and economy data, begins a new three-life run, and returns to the overview.
 - Shop prices and potion healing match this document.
 - The default miner can complete every required route without a purchase or power-up.
-- Input validation confirms fixed left-stick/D-pad and keyboard controls; six stable default controller bindings; the three-page Levels/Shop/Controls overview; six wired mapping rows; per-model persistence; conflict swapping; and Restore Defaults without coupling gameplay overrides to UI navigation.
+- Input validation confirms fixed left-stick/D-pad and keyboard controls; six stable default controller bindings; meaningful-activity device selection when multiple USB interfaces are attached; semantic-`Gamepad` preference over a noisy duplicate `Joystick`; usable generic DirectInput defaults; the three-page Levels/Shop/Controls overview; six wired mapping rows; per-model persistence; conflict swapping; and Restore Defaults without coupling gameplay overrides to UI navigation.
 - A grounded ordinary or power jump holds row-2 frame 1 for approximately 0.08 seconds before upward velocity begins, then advances directly to frame 2; a quick tap still launches, a held input produces the expected higher arc, and a power jump remains committed through its squat.
 - Pausing freezes and resumes level simulation cleanly. Returning home from either running or paused play restores normal time, loads the `DungeonOverview` Shop, preserves saved progress, and grants neither completion nor a life penalty.
 - The hero collider is zero-friction and cannot remain pinned to a wall or platform edge under sustained movement input.
 - Missing hearts render as dim filled-heart glyphs rather than unsupported outline glyphs, the Bronze Miner renders no pickaxe, and a null optional tool remains valid.
-- Levels 2, 5, 8, and 11 plus Level 12's angled sections use dedicated unrotated diagonal-mine artwork.
+- Levels 2, 5, 8, and 11 plus Level 12's angled sections use dedicated unrotated diagonal-mine artwork. Level 12 background tiles retain uniform scale and cover every camera overscan region without exposing black void.
 
 ### Human playtest focus
 
 - Confirm that the slower side speed and higher jump feel controlled rather than sluggish.
 - Confirm the 9-unit run is visibly faster than the 7.5-unit walk and selects the run animation, and that a directional power jump is distinct without replacing the ordinary jump.
 - On a Logitech F310 in rear-switch X/XInput mode, complete a controller-only pass with both the left stick and D-pad; verify the defaults match the table, remap all six actions, change two assignments through conflict swapping, reload the game to confirm persistence, and restore defaults.
+- With the Logitech and a generic/retro USB controller attached together, confirm that actual activity selects the intended device, stick/D-pad-only noise does not strand gameplay on a movement-only interface, and every controller can Jump, Interact/deploy the parachute, use a potion, Pause, and Return either from defaults or after mapping.
 - On the overview Levels page, activate the Foreman's Master Key once with `MINER` and once with the ten-direction controller sequence. Confirm all twelve named tunnels become selectable, Level 11 does not award a silver key, the active banner is unmistakable, and returning from a mutated test run leaves the real save byte-for-byte/logically unchanged.
 - Confirm the brief squat is readable without making jump input feel delayed, no standing frame flashes between squat and rise, and the squat never appears after takeoff.
 - Confirm that the thin platforms remain readable and their collision matches their artwork.
@@ -369,6 +377,7 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 - Confirm ordinary jumps have noticeably more overhead clearance, while every deliberate head-bump challenge is clearly telegraphed and documented.
 - Verify the Bronze Miner has no visible pickaxe and that removing the tool does not disturb the body animation or future attachment point.
 - Verify every outfit preserves the hero's recognizable face, scale, collider alignment, and full directional animation contract.
+- Start every level from the entrance door. Confirm the supported door remains aligned to its start platform, the miner visibly walks toward the camera, movement is locked during the intro, and physics, collision, input, and checkpoint state are restored at the authored start.
 - Verify door entry selects the back-facing walk-away animation rather than mirroring a side-walk cycle.
 - Verify that Level 2 falls naturally land on the ramp and cannot bypass the intended restart.
 - Verify Level 2 platform widths and both axes of jump spacing vary while the path still reads as a diagonal ascent; confirm every ramp spike points upward.
@@ -381,7 +390,7 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 - Approach every exit and verify contact only shows the current Interact mapping plus Up/W; while grounded, press mapped Interact or Up/W and confirm that the back-facing walk-through begins exactly once before the overview loads.
 - Clear every required Level 10 spike crossing with directional power jumps, verify each accepted landing has at least 0.25 world units of safe clearance, and confirm the ordinary jump cannot accidentally masquerade as a validated power jump.
 - Pause and resume with Start, Escape, and `P`. From both live and paused play, use Back or Backspace and verify the Shop opens without completing the level or consuming a life and that all saved progress remains available.
-- Play all three Level 12 descents using both deployed and released parachute states; verify Up/W or mapped Interact controls the chute without consuming Jump, the camera/canopy and both shaft walls remain readable, every landing can jump immediately, and the first two outgoing ledges are clear of wall, trigger, spike, and low-ceiling obstruction.
+- Play all three Level 12 descents using both deployed and released parachute states; verify the approach shelf is safe, Up/W or mapped Interact controls the chute without consuming Jump, the camera blends without threshold bounce, the canopy and both shaft walls remain readable, every landing can jump immediately, and the first two outgoing ledges are clear of wall, trigger, spike, and low-ceiling obstruction. Deliberately miss the route after taking damage and confirm the global fatal boundary still consumes the attempt rather than allowing exploration on unintended floor geometry.
 - Spend the final life, verify that no overview load occurs before Game Over is displayed, then verify Restart restores three lives while clearing level unlocks, all keys, chest state, crystals, potions, and heart upgrades.
 - Measure whether later levels are difficult because of mastery rather than excessive repetition.
 
@@ -399,6 +408,8 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 
 ### Route
 
+- **Route sketch or composition reference:**
+- **Supported entrance, intro path, and gameplay start:**
 - **Spawn and opening orientation:**
 - **Required route:**
 - **Recovery route or pit behavior:**
@@ -418,10 +429,12 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 ### Acceptance checklist
 
 - [ ] Default movement can complete the required route.
+- [ ] The supported entrance plays the front-facing walk-out intro, locks control during transition, and restores normal play at the authored start.
 - [ ] Required jumps have an appropriate margin for the target difficulty.
 - [ ] Ordinary stacked platforms provide the required hero-collider headroom; any tighter head-bump challenge is explicitly named and documented.
 - [ ] Hazards are visible before they can cause unavoidable damage.
 - [ ] Any descent defines parachute/fast-drop behavior, downward camera framing, and airborne safe-lane waypoints.
+- [ ] Modular route-aware backgrounds cover camera overscan at uniform scale and visually distinguish scenery from collision.
 - [ ] The player cannot become permanently trapped.
 - [ ] Horizontal pits are unmistakably lethal; recoverable ramps are unmistakably recoverable.
 - [ ] The bronze key and chest are optional, persisted, and belong to this level.

@@ -1,5 +1,6 @@
 using UnityEngine;
 
+[DefaultExecutionOrder(100)]
 [RequireComponent(typeof(Rigidbody2D), typeof(HeroMovement))]
 public sealed class ParachuteDescentController : MonoBehaviour
 {
@@ -13,11 +14,18 @@ public sealed class ParachuteDescentController : MonoBehaviour
     private HeroMovement movement;
     private float normalGravity;
     private int activeZoneCount;
+    private int activeLaunchAreaCount;
     private bool cameraTrackingDescent;
+    private bool deployedDuringCurrentDescent;
+    private bool deploymentRequested;
+    private bool previousParachuteHeld;
 
     public bool IsInDescentZone => activeZoneCount > 0;
+    public bool IsInLaunchArea => activeLaunchAreaCount > 0;
     public bool IsCameraTrackingDescent => cameraTrackingDescent;
     public bool IsDeployed { get; private set; }
+    public bool DeployedDuringCurrentDescent => deployedDuringCurrentDescent;
+    public bool IsDeploymentRequested => deploymentRequested;
     public float DeployedTerminalSpeed => deployedTerminalSpeed;
     public float DescentCenterX { get; private set; }
 
@@ -41,18 +49,29 @@ public sealed class ParachuteDescentController : MonoBehaviour
 
     private void Update()
     {
-        if (cameraTrackingDescent && !IsInDescentZone && movement.IsGrounded)
+        bool held = movement.ParachuteInputHeld;
+        bool pressed = held && !previousParachuteHeld;
+        previousParachuteHeld = held;
+
+        if (pressed && (IsInLaunchArea || IsInDescentZone))
+            deploymentRequested = !deploymentRequested;
+
+        bool airborneDescent = IsInDescentZone && !movement.IsGrounded;
+        if (airborneDescent && body.linearVelocityY <= .25f)
+            cameraTrackingDescent = true;
+        if (movement.IsGrounded)
             cameraTrackingDescent = false;
 
-        bool shouldDeploy = IsInDescentZone && !movement.IsGrounded &&
-                            movement.ParachuteInputHeld;
+        bool shouldDeploy = airborneDescent && deploymentRequested;
         SetDeployed(shouldDeploy);
+        if (shouldDeploy) deployedDuringCurrentDescent = true;
     }
 
     private void FixedUpdate()
     {
         if (!IsInDescentZone) return;
 
+        // Run after HeroMovement so the descent steering cap is deterministic.
         float terminalSpeed = IsDeployed ? deployedTerminalSpeed : closedTerminalSpeed;
         body.linearVelocity = new Vector2(
             Mathf.Clamp(body.linearVelocityX, -maximumHorizontalSpeed, maximumHorizontalSpeed),
@@ -68,10 +87,15 @@ public sealed class ParachuteDescentController : MonoBehaviour
 
     public void EnterDescentZone(float shaftCenterX)
     {
+        if (activeZoneCount == 0)
+        {
+            deployedDuringCurrentDescent = false;
+            // A button held while entering may count as the opening press, but an
+            // already armed chute must not toggle closed at the trigger boundary.
+            if (!deploymentRequested) previousParachuteHeld = false;
+        }
         activeZoneCount++;
         DescentCenterX = shaftCenterX;
-        cameraTrackingDescent = true;
-        movement.SetJumpSuppressed(true);
     }
 
     public void ExitDescentZone()
@@ -79,15 +103,32 @@ public sealed class ParachuteDescentController : MonoBehaviour
         activeZoneCount = Mathf.Max(0, activeZoneCount - 1);
         if (activeZoneCount == 0)
         {
-            movement.SetJumpSuppressed(false);
+            deploymentRequested = false;
+            cameraTrackingDescent = false;
             SetDeployed(false);
         }
+    }
+
+    public void EnterLaunchArea()
+    {
+        bool wasOutside = activeLaunchAreaCount == 0;
+        activeLaunchAreaCount++;
+        if (wasOutside && !deploymentRequested) previousParachuteHeld = false;
+    }
+
+    public void ExitLaunchArea()
+    {
+        activeLaunchAreaCount = Mathf.Max(0, activeLaunchAreaCount - 1);
     }
 
     public void ResetDescentState()
     {
         activeZoneCount = 0;
+        activeLaunchAreaCount = 0;
         cameraTrackingDescent = false;
+        deployedDuringCurrentDescent = false;
+        deploymentRequested = false;
+        previousParachuteHeld = false;
         if (movement != null) movement.SetJumpSuppressed(false);
         SetDeployed(false);
     }

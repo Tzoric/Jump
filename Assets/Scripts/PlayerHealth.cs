@@ -95,6 +95,21 @@ public sealed class PlayerHealth : MonoBehaviour
         return true;
     }
 
+    public bool KillFromFall()
+    {
+        if (respawning || currentHealth <= 0) return false;
+
+        // Bottomless falls are attempt failures, not ordinary contact damage.
+        // They must remain fatal during post-hit invulnerability.
+        RestoreDamagePresentation();
+        currentHealth = 0;
+        invulnerableUntil = 0f;
+        body.linearVelocity = Vector2.zero;
+        RefreshDisplay();
+        StartCoroutine(RespawnRoutine());
+        return true;
+    }
+
     public void Heal(int amount)
     {
         if (amount <= 0 || currentHealth == maxHealth)

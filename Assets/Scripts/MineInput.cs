@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
@@ -63,6 +64,7 @@ public static class MineInput
     private static InputDevice activeController;
     private static string activeProfilePreferenceKey;
     private static InputActionRebindingExtensions.RebindingOperation activeRebind;
+    private static int lastControllerActivityFrame = -1;
 
     public static event Action BindingsChanged;
 
@@ -94,6 +96,7 @@ public static class MineInput
         get
         {
             EnsureInitialized();
+            RefreshActiveControllerFromActivity();
             float keyboard = 0f;
             if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A)) keyboard -= 1f;
             if (Input.GetKey(KeyCode.RightArrow) || Input.GetKey(KeyCode.D)) keyboard += 1f;
@@ -125,6 +128,7 @@ public static class MineInput
         get
         {
             EnsureInitialized();
+            RefreshActiveControllerFromActivity();
             if (activeController is Gamepad gamepad)
             {
                 Vector2 stick = gamepad.leftStick.ReadValue();
@@ -222,13 +226,16 @@ public static class MineInput
     }
 
     /// <summary>
-    /// On the Controls page, the last-used connected pad becomes the explicit
-    /// single-player controller. Gameplay does not hot-swap devices afterward.
+    /// On the Controls page, deliberate activity selects the single-player pad.
+    /// Gameplay uses the same meaningful-activity rule so a second connected pad
+    /// can take over without an idle device stealing control.
     /// </summary>
     public static bool SelectMostRecentlyUsedController()
     {
         EnsureInitialized();
-        InputDevice candidate = FindMostRecentlyUsedController();
+        InputDevice candidate = FindMeaningfullyActiveController();
+        if (candidate == null && IsUsableController(activeController)) return false;
+        candidate ??= FindMostRecentlyUsedController();
         if (candidate == activeController) return false;
         SwitchController(candidate);
         return true;
@@ -298,6 +305,7 @@ public static class MineInput
         bool wasEnabled = buttonMap.enabled;
         if (wasEnabled) buttonMap.Disable();
         actionsAsset.RemoveAllBindingOverrides();
+        ApplyControllerDefaultBindings(activeController);
         if (!string.IsNullOrEmpty(activeProfilePreferenceKey))
         {
             PlayerPrefs.DeleteKey(activeProfilePreferenceKey);
@@ -324,6 +332,7 @@ public static class MineInput
         buttonActions = null;
         activeController = null;
         activeProfilePreferenceKey = null;
+        lastControllerActivityFrame = -1;
         BindingsChanged = null;
     }
 
@@ -361,6 +370,7 @@ public static class MineInput
     private static InputAction ReadAction(MineButtonAction action)
     {
         EnsureInitialized();
+        RefreshActiveControllerFromActivity();
         return buttonActions[(int)action];
     }
 
@@ -432,6 +442,7 @@ public static class MineInput
         activeProfilePreferenceKey = controller == null ? null : BuildProfilePreferenceKey(controller);
         actionsAsset.RemoveAllBindingOverrides();
 
+        bool loadedSavedProfile = false;
         if (!string.IsNullOrEmpty(activeProfilePreferenceKey) &&
             PlayerPrefs.HasKey(activeProfilePreferenceKey))
         {
@@ -439,6 +450,7 @@ public static class MineInput
             try
             {
                 actionsAsset.LoadBindingOverridesFromJson(json);
+                loadedSavedProfile = true;
             }
             catch (Exception exception)
             {
@@ -449,12 +461,19 @@ public static class MineInput
             }
         }
 
+        if (!loadedSavedProfile) ApplyControllerDefaultBindings(controller);
+
         if (wasEnabled) buttonMap.Enable();
         if (notify) BindingsChanged?.Invoke();
     }
 
     private static InputDevice FindMostRecentlyUsedController()
     {
+        // Prefer semantic XInput-style gamepads when both a gamepad and a noisy
+        // generic USB joystick are connected. Meaningful player activity can
+        // still switch the selected device immediately afterward.
+        if (IsUsableController(Gamepad.current)) return Gamepad.current;
+
         InputDevice best = null;
         double bestUpdate = double.MinValue;
         foreach (InputDevice device in InputSystem.devices)
@@ -467,9 +486,115 @@ public static class MineInput
             }
         }
 
-        if (Gamepad.current != null && Gamepad.current.lastUpdateTime >= bestUpdate) return Gamepad.current;
         if (Joystick.current != null && Joystick.current.lastUpdateTime >= bestUpdate) return Joystick.current;
         return best;
+    }
+
+    private static void RefreshActiveControllerFromActivity()
+    {
+        if (!Application.isPlaying || activeRebind != null || lastControllerActivityFrame == Time.frameCount)
+            return;
+
+        lastControllerActivityFrame = Time.frameCount;
+        InputDevice candidate = FindMeaningfullyActiveController();
+        if (candidate != null && candidate != activeController) SwitchController(candidate);
+    }
+
+    private static InputDevice FindMeaningfullyActiveController()
+    {
+        InputDevice best = null;
+        double bestUpdate = double.MinValue;
+        foreach (InputDevice device in InputSystem.devices)
+        {
+            if (!IsUsableController(device) || !HasMeaningfulActivity(device)) continue;
+            if (best == null || device.lastUpdateTime > bestUpdate)
+            {
+                best = device;
+                bestUpdate = device.lastUpdateTime;
+            }
+        }
+        return best;
+    }
+
+    private static bool HasMeaningfulActivity(InputDevice device)
+    {
+        Vector2 movement = Vector2.zero;
+        if (device is Gamepad gamepad)
+        {
+            Vector2 stick = gamepad.leftStick.ReadValue();
+            Vector2 dpad = gamepad.dpad.ReadValue();
+            movement = dpad.sqrMagnitude > stick.sqrMagnitude ? dpad : stick;
+        }
+        else if (device is Joystick joystick)
+        {
+            Vector2 stick = joystick.stick.ReadValue();
+            Vector2 hat = joystick.hatswitch == null ? Vector2.zero : joystick.hatswitch.ReadValue();
+            movement = hat.sqrMagnitude > stick.sqrMagnitude ? hat : stick;
+        }
+
+        if (movement.sqrMagnitude >= .35f * .35f) return true;
+        foreach (InputControl control in device.allControls)
+        {
+            if (control is ButtonControl button && !button.synthetic && button.isPressed) return true;
+        }
+        return false;
+    }
+
+    private static void ApplyControllerDefaultBindings(InputDevice controller)
+    {
+        if (controller is not Joystick joystick || buttonActions == null) return;
+
+        // Common DirectInput ordering used by Logitech F-series and many retro
+        // USB pads: X=0, A=1, B=2, Y=3, Back=8, Start=9. We bind the actual
+        // controls exposed by this specific device, then the mapping screen can
+        // save any model-specific corrections without affecting other pads.
+        var preferredButtons = new Dictionary<MineButtonAction, int>
+        {
+            { MineButtonAction.Run, 1 },
+            { MineButtonAction.Jump, 2 },
+            { MineButtonAction.Interact, 0 },
+            { MineButtonAction.Potion, 3 },
+            { MineButtonAction.Pause, 9 },
+            { MineButtonAction.Home, 8 }
+        };
+        var usedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (MineButtonAction action in BindableActions)
+        {
+            ButtonControl button = FindJoystickButton(joystick, preferredButtons[action], usedPaths);
+            if (button == null) continue;
+            buttonActions[(int)action].ApplyBindingOverride(0, button.path);
+            usedPaths.Add(button.path);
+        }
+    }
+
+    private static ButtonControl FindJoystickButton(Joystick joystick, int preferredIndex,
+        ISet<string> usedPaths)
+    {
+        string preferredName = preferredIndex == 0 ? "trigger" : $"button{preferredIndex}";
+        foreach (InputControl control in joystick.allControls)
+        {
+            if (control is ButtonControl button && !button.synthetic && button.parent == joystick &&
+                string.Equals(button.name, preferredName, StringComparison.OrdinalIgnoreCase) &&
+                !usedPaths.Contains(button.path))
+            {
+                return button;
+            }
+        }
+
+        var directButtons = new List<ButtonControl>();
+        foreach (InputControl control in joystick.allControls)
+        {
+            if (control is ButtonControl button && !button.synthetic && button.parent == joystick &&
+                !usedPaths.Contains(button.path))
+            {
+                directButtons.Add(button);
+            }
+        }
+        directButtons.Sort((left, right) => string.Compare(left.name, right.name,
+            StringComparison.OrdinalIgnoreCase));
+        return preferredIndex >= 0 && preferredIndex < directButtons.Count
+            ? directButtons[preferredIndex]
+            : null;
     }
 
     private static bool IsSupportedController(InputDevice device) =>
