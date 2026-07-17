@@ -27,6 +27,7 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         PlayerWeight weight = FindFirstObjectByType<PlayerWeight>();
         HeroMovement movement = FindFirstObjectByType<HeroMovement>();
         MinerOutfitVisual outfitVisual = FindFirstObjectByType<MinerOutfitVisual>();
+        LevelEntranceDoor entranceDoor = FindFirstObjectByType<LevelEntranceDoor>();
         LevelExitDoor exitDoor = FindFirstObjectByType<LevelExitDoor>();
         MineRunInventory inventory = FindFirstObjectByType<MineRunInventory>();
         RewardChest chest = FindFirstObjectByType<RewardChest>();
@@ -37,8 +38,13 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
 
         Rigidbody2D movementBody = movement == null ? null : movement.GetComponent<Rigidbody2D>();
         bool referencesPresent = health != null && weight != null && movement != null && movementBody != null &&
-            outfitVisual != null && exitDoor != null && inventory != null && chest != null && levelMenu != null &&
+            outfitVisual != null && entranceDoor != null && exitDoor != null && inventory != null &&
+            chest != null && levelMenu != null &&
             parachute != null && waypoints.Length == 11;
+        bool entranceDoorPassed = referencesPresent && entranceDoor.Hero == movement &&
+            entranceDoor.IsComplete && entranceDoor.EntranceSeconds >= .5f &&
+            entranceDoor.GetComponentsInChildren<Collider2D>(true).Length == 0 &&
+            Vector2.Distance(entranceDoor.GameplayPosition, movement.transform.position) <= .1f;
         bool damagePassed = false;
         bool damageVisualRestorationPassed = false;
         bool healingPassed = false;
@@ -270,17 +276,32 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             yield return null;
             bool jumpDidNotDeploy = !parachute.IsDeployed;
 
+            parachute.ExitDescentZone();
+            parachute.EnterLaunchArea();
+            movement.SetAutomatedInput(0f, false, false, false);
+            yield return null;
             movement.SetAutomatedInput(0f, false, false, true);
             yield return null;
             yield return null;
-            bool interactDeployed = parachute.IsDeployed && parachute.IsInDescentZone &&
+            bool launchAreaArmed = parachute.IsDeploymentRequested;
+            parachute.ExitLaunchArea();
+            parachute.EnterDescentZone(120f);
+            yield return null;
+            bool interactDeployed = launchAreaArmed && parachute.IsDeployed && parachute.IsInDescentZone &&
                 Mathf.Approximately(parachute.DescentCenterX, 120f);
+
+            movement.SetAutomatedInput(0f, false, false, false);
+            yield return null;
+            movement.SetAutomatedInput(0f, false, false, true);
+            yield return null;
+            bool secondPressFastDrop = !parachute.IsDeployed && !parachute.IsDeploymentRequested;
 
             parachute.ExitDescentZone();
             yield return null;
             bool landingReleasedJump = !parachute.IsDeployed && !parachute.IsInDescentZone &&
                 !movement.IsJumpSuppressed;
-            parachuteInputSeparationPassed = jumpDidNotDeploy && interactDeployed && landingReleasedJump;
+            parachuteInputSeparationPassed = jumpDidNotDeploy && interactDeployed &&
+                secondPressFastDrop && landingReleasedJump;
             movement.SetAutomatedInput(0f, false);
             movement.EnableAutomatedControl(false);
             movementBody.position = beforeParachutePosition;
@@ -393,7 +414,8 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             int livesBeforeDeathLock = GameProgress.Lives;
             GameProgress.AddHealthPotion();
             int potionsBeforeDeathLock = GameProgress.HealthPotions;
-            bool fatalDamageStarted = health.TakeDamage(health.CurrentHealth, health.transform.position);
+            bool ordinaryHitStarted = health.TakeDamage(1, health.transform.position);
+            bool fatalDamageStarted = ordinaryHitStarted && health.IsInvulnerable && health.KillFromFall();
             OverviewArrival.Clear();
             levelMenu.SetPaused(true);
             levelMenu.ReturnToOverview();
@@ -434,7 +456,7 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
                 heroBodyCollider != null && !heroBodyCollider.enabled;
         }
 
-        bool passed = referencesPresent && automatedJumpPassed && jumpAnticipationPassed && damagePassed &&
+        bool passed = referencesPresent && entranceDoorPassed && automatedJumpPassed && jumpAnticipationPassed && damagePassed &&
             damageVisualRestorationPassed &&
             healingPassed && weightPassed && exitConfiguredPassed && gameOverProgressResetPassed &&
             playtestUnlockEasterEggPassed &&
@@ -447,6 +469,7 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         {
             passed = passed,
             referencesPresent = referencesPresent,
+            entranceDoorPassed = entranceDoorPassed,
             damagePassed = damagePassed,
             damageVisualRestorationPassed = damageVisualRestorationPassed,
             healingPassed = healingPassed,
@@ -681,6 +704,7 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
     {
         public bool passed;
         public bool referencesPresent;
+        public bool entranceDoorPassed;
         public bool damagePassed;
         public bool damageVisualRestorationPassed;
         public bool healingPassed;

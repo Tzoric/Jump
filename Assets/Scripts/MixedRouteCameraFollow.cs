@@ -15,6 +15,7 @@ public sealed class MixedRouteCameraFollow : MonoBehaviour
 
     private Rigidbody2D targetBody;
     private ParachuteDescentController parachute;
+    private LevelEntranceDoor entrance;
     private Vector3 velocity;
     private float framedY;
     private float horizontalOffset;
@@ -36,7 +37,11 @@ public sealed class MixedRouteCameraFollow : MonoBehaviour
         CacheTarget();
     }
 
-    private void Awake() => CacheTarget();
+    private void Awake()
+    {
+        entrance = FindFirstObjectByType<LevelEntranceDoor>();
+        CacheTarget();
+    }
 
     private void Start() => SnapToTarget();
 
@@ -65,12 +70,15 @@ public sealed class MixedRouteCameraFollow : MonoBehaviour
         float horizontalVelocity = targetBody == null ? 0f : targetBody.linearVelocityX;
         float requestedOffset = Mathf.Abs(horizontalVelocity) > .15f
             ? horizontalLookAhead * Mathf.Sign(horizontalVelocity)
-            : horizontalOffset;
+            : 0f;
         horizontalOffset = Mathf.SmoothDamp(horizontalOffset, requestedOffset,
             ref horizontalOffsetVelocity, lookAheadSmoothTime);
 
         float verticalAhead = Mathf.Lerp(upwardLookAhead, -downwardLookAhead, descentBlend);
-        float requestedY = target.position.y + verticalAhead;
+        Vector3 trackedPosition = entrance != null && !entrance.IsComplete
+            ? entrance.GameplayPosition
+            : target.position;
+        float requestedY = trackedPosition.y + verticalAhead;
         if (requestedY > framedY + verticalDeadZone)
         {
             framedY = requestedY - verticalDeadZone;
@@ -80,7 +88,7 @@ public sealed class MixedRouteCameraFollow : MonoBehaviour
             framedY = requestedY + verticalDeadZone;
         }
 
-        float routeX = target.position.x + horizontalOffset;
+        float routeX = trackedPosition.x + horizontalOffset;
         float descentX = parachute == null ? routeX : parachute.DescentCenterX;
         float requestedX = Mathf.Lerp(routeX, descentX, descentBlend);
         Vector3 desired = new(
@@ -94,12 +102,15 @@ public sealed class MixedRouteCameraFollow : MonoBehaviour
     {
         if (target == null) return;
         CacheTarget();
+        Vector3 trackedPosition = entrance != null && !entrance.IsComplete
+            ? entrance.GameplayPosition
+            : target.position;
         bool lookingDown = parachute != null && parachute.IsCameraTrackingDescent;
         descentBlend = lookingDown ? 1f : 0f;
         float verticalAhead = lookingDown ? -downwardLookAhead : upwardLookAhead;
-        framedY = target.position.y + verticalAhead;
+        framedY = trackedPosition.y + verticalAhead;
         horizontalOffset = 0f;
-        float routeX = target.position.x + horizontalOffset;
+        float routeX = trackedPosition.x + horizontalOffset;
         float requestedX = lookingDown && parachute != null ? parachute.DescentCenterX : routeX;
         transform.position = new Vector3(
             Mathf.Clamp(requestedX, minimum.x, maximum.x),

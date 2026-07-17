@@ -249,7 +249,7 @@ public static class MineInput
             if (activeController == null) return false;
             foreach (InputControl control in activeController.allControls)
             {
-                if (control is ButtonControl button && button.isPressed) return true;
+                if (control is ButtonControl button && !button.synthetic && button.isPressed) return true;
             }
             return false;
         }
@@ -562,20 +562,22 @@ public static class MineInput
         {
             ButtonControl button = FindJoystickButton(joystick, preferredButtons[action], usedPaths);
             if (button == null) continue;
-            buttonActions[(int)action].ApplyBindingOverride(0, button.path);
-            usedPaths.Add(button.path);
+            // Store a layout-relative path so reconnecting the same controller
+            // does not invalidate its defaults or a later swapped binding.
+            string bindingPath = $"<Joystick>/{button.name}";
+            buttonActions[(int)action].ApplyBindingOverride(0, bindingPath);
+            usedPaths.Add(button.name);
         }
     }
 
     private static ButtonControl FindJoystickButton(Joystick joystick, int preferredIndex,
         ISet<string> usedPaths)
     {
-        string preferredName = preferredIndex == 0 ? "trigger" : $"button{preferredIndex}";
         foreach (InputControl control in joystick.allControls)
         {
             if (control is ButtonControl button && !button.synthetic && button.parent == joystick &&
-                string.Equals(button.name, preferredName, StringComparison.OrdinalIgnoreCase) &&
-                !usedPaths.Contains(button.path))
+                JoystickButtonIndex(button) == preferredIndex &&
+                !usedPaths.Contains(button.name))
             {
                 return button;
             }
@@ -585,16 +587,29 @@ public static class MineInput
         foreach (InputControl control in joystick.allControls)
         {
             if (control is ButtonControl button && !button.synthetic && button.parent == joystick &&
-                !usedPaths.Contains(button.path))
+                !usedPaths.Contains(button.name))
             {
                 directButtons.Add(button);
             }
         }
-        directButtons.Sort((left, right) => string.Compare(left.name, right.name,
-            StringComparison.OrdinalIgnoreCase));
-        return preferredIndex >= 0 && preferredIndex < directButtons.Count
-            ? directButtons[preferredIndex]
-            : null;
+        directButtons.Sort((left, right) =>
+        {
+            int indexComparison = JoystickButtonIndex(left).CompareTo(JoystickButtonIndex(right));
+            return indexComparison != 0 ? indexComparison : string.Compare(left.name, right.name,
+                StringComparison.OrdinalIgnoreCase);
+        });
+        return directButtons.Count > 0 ? directButtons[0] : null;
+    }
+
+    private static int JoystickButtonIndex(ButtonControl button)
+    {
+        if (string.Equals(button.name, "trigger", StringComparison.OrdinalIgnoreCase)) return 0;
+        if (button.name.StartsWith("button", StringComparison.OrdinalIgnoreCase) &&
+            int.TryParse(button.name.Substring("button".Length), out int oneBased))
+        {
+            return Mathf.Max(0, oneBased - 1);
+        }
+        return int.MaxValue;
     }
 
     private static bool IsSupportedController(InputDevice device) =>

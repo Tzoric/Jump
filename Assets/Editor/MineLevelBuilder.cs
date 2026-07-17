@@ -46,17 +46,26 @@ public static class MineLevelBuilder
         public readonly Sprite Door;
         public readonly Sprite Backdrop;
         public readonly Sprite DiagonalBackdrop;
+        public readonly Sprite FarCaveBackdrop;
+        public readonly Sprite MixedHorizontalBackdrop;
+        public readonly Sprite MixedVerticalBackdrop;
+        public readonly Sprite MixedDiagonalBackdrop;
+        public readonly Sprite MixedDescentBackdrop;
         public readonly Sprite BronzeKey;
         public readonly Sprite SilverKey;
         public readonly Sprite Chest;
         public readonly Sprite OpenChest;
 
         public ArtSet(Sprite platform, Sprite greenGem, Sprite blueGem, Sprite purpleGem, Sprite spike,
-            Sprite door, Sprite backdrop, Sprite diagonalBackdrop, Sprite bronzeKey, Sprite silverKey, Sprite chest,
-            Sprite openChest)
+            Sprite door, Sprite backdrop, Sprite diagonalBackdrop, Sprite farCaveBackdrop,
+            Sprite mixedHorizontalBackdrop, Sprite mixedVerticalBackdrop, Sprite mixedDiagonalBackdrop,
+            Sprite mixedDescentBackdrop, Sprite bronzeKey, Sprite silverKey, Sprite chest, Sprite openChest)
         {
             Platform = platform; GreenGem = greenGem; BlueGem = blueGem; PurpleGem = purpleGem;
             Spike = spike; Door = door; Backdrop = backdrop; DiagonalBackdrop = diagonalBackdrop; BronzeKey = bronzeKey;
+            FarCaveBackdrop = farCaveBackdrop; MixedHorizontalBackdrop = mixedHorizontalBackdrop;
+            MixedVerticalBackdrop = mixedVerticalBackdrop; MixedDiagonalBackdrop = mixedDiagonalBackdrop;
+            MixedDescentBackdrop = mixedDescentBackdrop;
             SilverKey = silverKey; Chest = chest; OpenChest = openChest;
         }
     }
@@ -83,6 +92,11 @@ public static class MineLevelBuilder
     private const string Art = "Assets/Art/Generated";
     private const string BackdropPath = Art + "/MineLevel1BronzeBackdrop.png";
     private const string DiagonalBackdropPath = Art + "/MineDiagonalBronzeBackdrop.png";
+    private const string FarCaveBackdropPath = Art + "/MineFarCaveTile.png";
+    private const string MixedHorizontalBackdropPath = Art + "/MineHorizontalTunnelTile.png";
+    private const string MixedVerticalBackdropPath = Art + "/MineVerticalShaftTile.png";
+    private const string MixedDiagonalBackdropPath = Art + "/MineDiagonalShaftTile.png";
+    private const string MixedDescentBackdropPath = Art + "/MineDescentShaftTile.png";
     private const string OverviewBackdropPath = Art + "/MineDungeonOverview.png";
     private const string DoorPath = Art + "/MineExitDoor.png";
     private const string PlatformPath = Art + "/MineRockBronzePlatform.png";
@@ -122,7 +136,12 @@ public static class MineLevelBuilder
             ImportSprite(PlatformPath, 16f), ImportSprite(GreenGemPath, 24f),
             ImportSprite(BlueGemPath, 24f), ImportSprite(PurpleGemPath, 24f),
             ImportSprite(SpikePath, 24f), ImportSprite(DoorPath, 256f),
-            ImportSprite(BackdropPath, 32f), ImportSprite(DiagonalBackdropPath, 32f), ImportSprite(BronzeKeyPath, 24f),
+            ImportSprite(BackdropPath, 32f), ImportSprite(DiagonalBackdropPath, 32f),
+            ImportSprite(FarCaveBackdropPath, 8f, false, true),
+            ImportSprite(MixedHorizontalBackdropPath, 8f, false, true),
+            ImportSprite(MixedVerticalBackdropPath, 8f, false, true),
+            ImportSprite(MixedDiagonalBackdropPath, 8f, false, true),
+            ImportSprite(MixedDescentBackdropPath, 8f, false, true), ImportSprite(BronzeKeyPath, 24f),
             ImportSprite(SilverKeyPath, 24f), ImportSprite(ChestPath, 24f), ImportSprite(OpenChestPath, 24f));
         Sprite overview = ImportSprite(OverviewBackdropPath, 100f);
 
@@ -361,7 +380,7 @@ public static class MineLevelBuilder
         var routePoints = new List<Vector2> { cursor };
         Transform route = new GameObject("Level 12 Seeded Mixed Route").transform;
         route.SetParent(root);
-        CreatePlatform(route, art.Platform, "Entrance Door Foundation (Required)", cursor, 8f, 0f);
+        CreatePlatform(route, art.Platform, "Entrance Door Foundation (Required)", cursor, 6.5f, 0f);
 
         GameObject hero = SpawnHero(prefab, scene, cursor + Vector2.up * 1.5f);
         CreateEntranceDoor(root, art, hero, hero.transform.position);
@@ -378,7 +397,10 @@ public static class MineLevelBuilder
             {
                 case MineRouteSectionType.VerticalUp:
                     cursor = BuildLevel12VerticalUp(section, art, cursor, ref waypointOrder, routePoints,
-                        index, out pathLength);
+                        index,
+                        index + 1 < sectionOrder.Length &&
+                        sectionOrder[index + 1] == MineRouteSectionType.VerticalDown,
+                        out pathLength);
                     break;
                 case MineRouteSectionType.AngledUp:
                     cursor = BuildLevel12AngledUp(section, art, cursor, ref waypointOrder, routePoints,
@@ -416,6 +438,10 @@ public static class MineLevelBuilder
         float maxX = routePoints.Max(point => point.x) + 4f;
         float minY = routePoints.Min(point => point.y) - 4f;
         float maxY = routePoints.Max(point => point.y) + 4f;
+        CreateTiledBackdrop(root, art.FarCaveBackdrop, "Level 12 Continuous Far Cave Fill",
+            new Vector3((minX + maxX) * .5f, (minY + maxY) * .5f, 6f),
+            new Vector2(maxX - minX + 48f, maxY - minY + 40f), -200,
+            new Color32(88, 101, 121, 255));
         // Begin at the miner rather than the final route endpoint. MixedRouteCameraFollow
         // also snaps on Start so hand-authored variants cannot sweep across the map.
         Camera camera = CreateCameraBase(new Vector3(
@@ -464,7 +490,8 @@ public static class MineLevelBuilder
     }
 
     private static Vector2 BuildLevel12VerticalUp(Transform section, ArtSet art, Vector2 entry,
-        ref int waypointOrder, ICollection<Vector2> routePoints, int sectionIndex, out float pathLength)
+        ref int waypointOrder, ICollection<Vector2> routePoints, int sectionIndex,
+        bool leadsIntoDescent, out float pathLength)
     {
         Vector2 previous = entry;
         pathLength = 0f;
@@ -481,6 +508,25 @@ public static class MineLevelBuilder
             previous = position;
             routePoints.Add(position);
         }
+
+        // A descent directly after this climb must not double back through the
+        // horizontal pit field beneath it. Give the shaft a short, readable top
+        // connector so its entire fall corridor is clear of earlier fatal gaps.
+        if (leadsIntoDescent)
+        {
+            for (int bridgeStep = 0; bridgeStep < 3; bridgeStep++)
+            {
+                Vector2 position = previous + new Vector2(6f, 0f);
+                CreatePlatform(section, art.Platform,
+                    $"Descent Approach Bridge {sectionIndex + 1:00}-{bridgeStep + 1:00}",
+                    position, 5.2f, 0f);
+                CreateWaypoint(section, position + Vector2.up * 1.45f, ++waypointOrder, radius: .75f);
+                pathLength += Vector2.Distance(previous, position);
+                previous = position;
+                routePoints.Add(position);
+            }
+        }
+
         return previous;
     }
 
@@ -494,19 +540,32 @@ public static class MineLevelBuilder
         // ceiling: the miner hits its underside before gaining enough height. Move the
         // entire outgoing run just beyond the shelf edge after a descent, preserving the
         // same slope and jump spacing while leaving an unmistakable lower-right breakout.
-        float breakoutOffset = followsDescent ? 1.9f : 0f;
+        // After a descent, keep the first ledge completely beyond the launch
+        // shelf's head space. A nearer ledge cancels the upward impulse against
+        // its underside before the miner can ever reach its top.
+        float breakoutOffset = followsDescent ? 4.1f : 0f;
         for (int step = 0; step < 7; step++)
         {
             Vector2 position = entry + new Vector2((step + 1) * 6.1f + breakoutOffset,
                 (step + 1) * 2.7f);
+            bool transitionShelf = followsDescent && step == 0;
+            // The route climbs diagonally, but individual footholds stay level.
+            // Only the dedicated Level 2 recovery ramp should force continuous
+            // sliding; tilted Level 12 ledges never give the miner a settled
+            // moment to plan the next difficult jump.
+            const float platformAngle = 0f;
+            float platformWidth = transitionShelf ? 5.6f : 4.5f - step * .08f;
             CreatePlatform(section, art.Platform, $"Mixed Diagonal Ledge {sectionIndex + 1:00}-{step + 1:00}",
-                position, 4.5f - step * .08f, 18f);
+                position, platformWidth, platformAngle);
             // The rotated platform's physical standing center is slightly lower than the
             // old marker. Keep the route marker inside the settled-ground tolerance so a
             // focused traversal recognizes the landing instead of jumping in place.
-            CreateWaypoint(section, position + Vector2.up * 1.4f, ++waypointOrder);
+            Vector2 waypointOffset = Vector2.up * (transitionShelf ? 1.45f : 1.4f);
+            if (transitionShelf) waypointOffset += Vector2.left * 1.6f;
+            CreateWaypoint(section, position + waypointOffset,
+                ++waypointOrder, radius: transitionShelf ? .8f : .65f);
             if (step > 1 && step % 2 == 1)
-                CreateSpike(section, art.Spike, position + new Vector2(1f, .9f), 18f);
+                CreateSpike(section, art.Spike, position + new Vector2(1f, .82f), 0f);
             if (step % 2 == 0) CreateGem(section, art.GreenGem, position + Vector2.up * 2.1f, 1);
             pathLength += Vector2.Distance(previous, position);
             previous = position;
@@ -520,8 +579,13 @@ public static class MineLevelBuilder
         bool leadsIntoDescent, out float pathLength)
     {
         Vector2 previousPosition = entry;
-        GameObject previousPlatform = CreatePlatform(section, art.Platform,
-            $"Mixed Horizontal Hub {sectionIndex + 1:00}", entry, 6.5f, 0f);
+        Transform existingEntrance = sectionIndex == 0 && section.parent != null
+            ? section.parent.Find("Entrance Door Foundation (Required)")
+            : null;
+        GameObject previousPlatform = existingEntrance != null
+            ? existingEntrance.gameObject
+            : CreatePlatform(section, art.Platform,
+                $"Mixed Horizontal Hub {sectionIndex + 1:00}", entry, 6.5f, 0f);
         pathLength = 0f;
         for (int step = 0; step < 7; step++)
         {
@@ -530,19 +594,32 @@ public static class MineLevelBuilder
             float width = 4.25f - (step % 3) * .3f;
             GameObject platform = CreatePlatform(section, art.Platform,
                 $"Mixed Pit Ledge {sectionIndex + 1:00}-{step + 1:00}", position, width, 0f);
-            CreateWaypoint(section, position + Vector2.up * 1.45f, ++waypointOrder);
+            bool hasSpike = step > 1 && step < 6 && step % 2 == 0;
+            // Route the normal landing to the open side of a spike platform.
+            // The challenge remains, but neither the virtual controller nor a
+            // centered human landing is silently aimed into the hitbox.
+            Vector2 landingOffset = hasSpike ? new Vector2(-.9f, 1.45f) : Vector2.up * 1.45f;
+            CreateWaypoint(section, position + landingOffset, ++waypointOrder);
             Physics2D.SyncTransforms();
             // The last transition into a parachute shaft uses an overlapping launch
             // shelf instead of a lethal strip. This prevents the visually safe
             // approach from killing a player before they can step off the right edge.
             if (!leadsIntoDescent || step < 6)
+            {
+                // The shallow trigger under the penultimate gap would otherwise
+                // protrude a few pixels into the following 18-unit-wide shaft.
+                // Keep the visible gap lethal while reserving a clear descent lane.
+                float descentSafeRight = leadsIntoDescent && step == 5
+                    ? entry.x + 7f * 6.8f - 9f - .25f
+                    : float.PositiveInfinity;
                 CreateLocalBottomlessPit(levelRoot,
                     $"Level 12 Local Bottomless Pit {sectionIndex + 1:00}-{step + 1:00}",
                     previousPlatform.GetComponent<BoxCollider2D>().bounds,
-                    platform.GetComponent<BoxCollider2D>().bounds);
+                    platform.GetComponent<BoxCollider2D>().bounds, descentSafeRight);
+            }
             // Keep the final ledge clear so it is a readable, safe launch into a following
             // descent section instead of hiding a spike directly under the parachute cue.
-            if (step > 1 && step < 6 && step % 2 == 0)
+            if (hasSpike)
                 CreateSpike(section, art.Spike, position + new Vector2(.8f, .82f), 0f);
             if (step % 2 == 1) CreateGem(section, art.GreenGem, position + Vector2.up * 2f, 1);
             pathLength += Vector2.Distance(previousPosition, position);
@@ -594,7 +671,10 @@ public static class MineLevelBuilder
 
         bool needsRightExit = sectionIndex < 11;
         float wallBottom = entry.y - depth - 1f;
-        float leftWallTop = entry.y - 3f;
+        // Keep the solid wall cap below every nearby horizontal pit trigger.
+        // Otherwise its top edge can become a tiny survivable ledge under the
+        // final approach even though the gap reads as bottomless.
+        float leftWallTop = entry.y - 4f;
         float leftWallHeight = leftWallTop - wallBottom;
         CreateVisibleShaftWall(section, art.Platform, $"Descent Left Rock Wall {sectionIndex + 1:00}",
             new Vector2(entry.x - 9.5f, (leftWallTop + wallBottom) * .5f), leftWallHeight);
@@ -652,13 +732,15 @@ public static class MineLevelBuilder
             _ => new Vector2(
                 Mathf.Abs(exit.x - entry.x) + 42f, Mathf.Abs(exit.y - entry.y) + 42f)
         };
-        Sprite sprite = type == MineRouteSectionType.AngledUp ? art.DiagonalBackdrop : art.Backdrop;
-        Vector2 nativeSize = type == MineRouteSectionType.AngledUp ? new Vector2(48f, 32f) : new Vector2(32f, 48f);
+        Sprite sprite = type switch
+        {
+            MineRouteSectionType.Horizontal => art.MixedHorizontalBackdrop,
+            MineRouteSectionType.VerticalUp => art.MixedVerticalBackdrop,
+            MineRouteSectionType.AngledUp => art.MixedDiagonalBackdrop,
+            MineRouteSectionType.VerticalDown => art.MixedDescentBackdrop,
+            _ => art.FarCaveBackdrop
+        };
         bool descent = type == MineRouteSectionType.VerticalDown;
-        const float uniformScale = .9f;
-        Vector2 tileStep = nativeSize * uniformScale * .96f;
-        int columns = Mathf.Max(1, Mathf.CeilToInt(span.x / tileStep.x));
-        int rows = Mathf.Max(1, Mathf.CeilToInt(span.y / tileStep.y));
         Color32 tint = type switch
         {
             MineRouteSectionType.VerticalDown => new Color32(72, 88, 112, 255),
@@ -667,20 +749,8 @@ public static class MineLevelBuilder
             _ => new Color32(80, 86, 100, 255)
         };
 
-        Transform backdropGroup = new GameObject($"Section {order:00} {type} Modular Background").transform;
-        backdropGroup.SetParent(parent);
-        for (int row = 0; row < rows; row++)
-        for (int column = 0; column < columns; column++)
-        {
-            Vector2 offset = new(
-                (column - (columns - 1) * .5f) * tileStep.x,
-                (row - (rows - 1) * .5f) * tileStep.y);
-            SpriteRenderer renderer = CreateBackdrop(backdropGroup, sprite,
-                $"Background Tile {row + 1:00}-{column + 1:00}",
-                new Vector3(center.x + offset.x, center.y + offset.y, 5f),
-                Vector2.one * uniformScale, 0f, descent ? -110 : -120);
-            renderer.color = tint;
-        }
+        CreateTiledBackdrop(parent, sprite, $"Section {order:00} {type} Modular Backdrop",
+            new Vector3(center.x, center.y, 5f), span, descent ? -110 : -120, tint);
     }
 
     private static void BuildGeneratedLevel(LevelSpec level, GameObject prefab, ArtSet art)
@@ -829,6 +899,21 @@ public static class MineLevelBuilder
         SpriteRenderer renderer=backdrop.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=sortingOrder; return renderer;
     }
 
+    private static SpriteRenderer CreateTiledBackdrop(Transform parent, Sprite sprite, string name,
+        Vector3 position, Vector2 size, int sortingOrder, Color color)
+    {
+        GameObject backdrop = new(name);
+        backdrop.transform.SetParent(parent);
+        backdrop.transform.position = position;
+        SpriteRenderer renderer = backdrop.AddComponent<SpriteRenderer>();
+        renderer.sprite = sprite;
+        renderer.drawMode = SpriteDrawMode.Tiled;
+        renderer.size = size;
+        renderer.sortingOrder = sortingOrder;
+        renderer.color = color;
+        return renderer;
+    }
+
     private static void CreateGlobalMineLight(Transform parent)
     {
         GameObject lightGo=new("Global Bronze Mine Light"); lightGo.transform.SetParent(parent); Light2D light=lightGo.AddComponent<Light2D>(); light.lightType=Light2D.LightType.Global; light.color=new Color32(190,202,225,255); light.intensity=.82f;
@@ -973,11 +1058,12 @@ public static class MineLevelBuilder
         GameObject pit=new(name); pit.transform.SetParent(parent); pit.transform.position=new Vector3((safeLeft+safeRight)*.5f,-7,0); BoxCollider2D trigger=pit.AddComponent<BoxCollider2D>(); trigger.isTrigger=true; trigger.size=new Vector2(width,6); pit.AddComponent<FatalFallZone>();
     }
 
-    private static void CreateLocalBottomlessPit(Transform parent,string name,Bounds leftPlatform,Bounds rightPlatform)
+    private static void CreateLocalBottomlessPit(Transform parent,string name,Bounds leftPlatform,
+        Bounds rightPlatform,float rightLimit=float.PositiveInfinity)
     {
         const float edgeClearance=.08f;
         float left=leftPlatform.max.x+edgeClearance;
-        float right=rightPlatform.min.x-edgeClearance;
+        float right=Mathf.Min(rightPlatform.min.x-edgeClearance,rightLimit);
         float width=right-left;
         if(width<=.25f) throw new InvalidDataException($"{name} has no meaningful visible gap ({width:0.00} units).");
         float top=Mathf.Min(leftPlatform.max.y,rightPlatform.max.y)-.45f;
@@ -1218,15 +1304,89 @@ public static class MineLevelBuilder
     private static void Rect(RectTransform rect,Vector2 min,Vector2 max,Vector2 position,Vector2 size) { rect.anchorMin=min; rect.anchorMax=max; rect.pivot=(min+max)*.5f; rect.anchoredPosition=position; rect.sizeDelta=size; }
     private static void Stretch(RectTransform rect) { rect.anchorMin=Vector2.zero; rect.anchorMax=Vector2.one; rect.offsetMin=Vector2.zero; rect.offsetMax=Vector2.zero; }
 
-    private static Sprite ImportSprite(string path,float ppu,bool readable=false)
+    private static Sprite ImportSprite(string path,float ppu,bool readable=false,bool repeat=false)
     {
-        AssetDatabase.ImportAsset(path,ImportAssetOptions.ForceSynchronousImport); TextureImporter importer=AssetImporter.GetAtPath(path) as TextureImporter; if(importer==null) throw new InvalidDataException(path); importer.textureType=TextureImporterType.Sprite; importer.spriteImportMode=SpriteImportMode.Single; importer.spritePixelsPerUnit=ppu; importer.filterMode=FilterMode.Point; importer.mipmapEnabled=false; importer.textureCompression=TextureImporterCompression.Uncompressed; importer.alphaIsTransparency=true; importer.isReadable=readable; importer.maxTextureSize=2048; importer.SaveAndReimport(); return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+        AssetDatabase.ImportAsset(path,ImportAssetOptions.ForceSynchronousImport); TextureImporter importer=AssetImporter.GetAtPath(path) as TextureImporter; if(importer==null) throw new InvalidDataException(path); importer.textureType=TextureImporterType.Sprite; importer.spriteImportMode=SpriteImportMode.Single; importer.spritePixelsPerUnit=ppu; importer.filterMode=FilterMode.Point; importer.wrapMode=repeat?TextureWrapMode.Repeat:TextureWrapMode.Clamp; importer.mipmapEnabled=false; importer.textureCompression=TextureImporterCompression.Uncompressed; importer.alphaIsTransparency=true; importer.isReadable=readable; importer.maxTextureSize=2048; TextureImporterSettings settings=new(); importer.ReadTextureSettings(settings); settings.spriteMeshType=SpriteMeshType.FullRect; importer.SetTextureSettings(settings); importer.SaveAndReimport(); return AssetDatabase.LoadAssetAtPath<Sprite>(path);
     }
 
-    private static void CreatePixelAssets() { WritePlatform(); WriteGem(GreenGemPath,new Color32(11,91,56,255),new Color32(32,210,106,255),new Color32(145,255,184,255)); WriteGem(BlueGemPath,new Color32(18,63,139,255),new Color32(46,148,255,255),new Color32(176,230,255,255)); WriteGem(PurpleGemPath,new Color32(74,27,112,255),new Color32(177,72,234,255),new Color32(245,184,255,255)); WriteSpike(); WriteParachute(); WriteKey(BronzeKeyPath,new Color32(106,58,24,255),new Color32(213,126,54,255),new Color32(255,193,94,255)); WriteKey(SilverKeyPath,new Color32(72,83,101,255),new Color32(172,190,211,255),new Color32(242,250,255,255)); WriteChest(); WriteOpenChest(); }
+    private static void CreatePixelAssets() { WritePlatform(); WriteMineBackgroundTiles(); WriteGem(GreenGemPath,new Color32(11,91,56,255),new Color32(32,210,106,255),new Color32(145,255,184,255)); WriteGem(BlueGemPath,new Color32(18,63,139,255),new Color32(46,148,255,255),new Color32(176,230,255,255)); WriteGem(PurpleGemPath,new Color32(74,27,112,255),new Color32(177,72,234,255),new Color32(245,184,255,255)); WriteSpike(); WriteParachute(); WriteKey(BronzeKeyPath,new Color32(106,58,24,255),new Color32(213,126,54,255),new Color32(255,193,94,255)); WriteKey(SilverKeyPath,new Color32(72,83,101,255),new Color32(172,190,211,255),new Color32(242,250,255,255)); WriteChest(); WriteOpenChest(); }
     private static Texture2D Texture(int w,int h) { Texture2D texture=new(w,h,TextureFormat.RGBA32,false); texture.filterMode=FilterMode.Point; texture.SetPixels32(new Color32[w*h]); return texture; }
     private static void Save(Texture2D texture,string path) { texture.Apply(); File.WriteAllBytes(path,texture.EncodeToPNG()); Object.DestroyImmediate(texture); }
     private static void Fill(Texture2D texture,int x0,int y0,int x1,int y1,Color32 color) { for(int y=y0;y<y1;y++) for(int x=x0;x<x1;x++) texture.SetPixel(x,y,color); }
+    private static void WriteMineBackgroundTiles()
+    {
+        Texture2D far = Texture(128,128);
+        PaintBackgroundRock(far, false, 23);
+        Save(far, FarCaveBackdropPath);
+
+        Color32 bronze = new(116,72,43,255);
+        Color32 glint = new(158,101,55,255);
+
+        Texture2D horizontal = Texture(256,128);
+        PaintBackgroundRock(horizontal, false, 41);
+        DrawVein(horizontal,new Vector2Int(0,25),new Vector2Int(64,31),bronze,glint);
+        DrawVein(horizontal,new Vector2Int(64,31),new Vector2Int(128,24),bronze,glint);
+        DrawVein(horizontal,new Vector2Int(128,24),new Vector2Int(192,29),bronze,glint);
+        DrawVein(horizontal,new Vector2Int(192,29),new Vector2Int(255,25),bronze,glint);
+        DrawVein(horizontal,new Vector2Int(0,101),new Vector2Int(255,96),bronze,glint);
+        Save(horizontal, MixedHorizontalBackdropPath);
+
+        Texture2D vertical = Texture(128,256);
+        PaintBackgroundRock(vertical, false, 67);
+        DrawVein(vertical,new Vector2Int(27,0),new Vector2Int(34,64),bronze,glint);
+        DrawVein(vertical,new Vector2Int(34,64),new Vector2Int(28,128),bronze,glint);
+        DrawVein(vertical,new Vector2Int(28,128),new Vector2Int(36,192),bronze,glint);
+        DrawVein(vertical,new Vector2Int(36,192),new Vector2Int(27,255),bronze,glint);
+        DrawVein(vertical,new Vector2Int(101,0),new Vector2Int(96,255),bronze,glint);
+        Save(vertical, MixedVerticalBackdropPath);
+
+        Texture2D diagonal = Texture(192,128);
+        PaintBackgroundRock(diagonal, false, 89);
+        DrawVein(diagonal,new Vector2Int(0,18),new Vector2Int(64,54),bronze,glint);
+        DrawVein(diagonal,new Vector2Int(64,54),new Vector2Int(128,90),bronze,glint);
+        DrawVein(diagonal,new Vector2Int(128,90),new Vector2Int(191,126),bronze,glint);
+        DrawVein(diagonal,new Vector2Int(0,0),new Vector2Int(191,108),bronze,glint);
+        Save(diagonal, MixedDiagonalBackdropPath);
+
+        // One descent panel is wider/taller than the camera envelope so its two
+        // authored walls crop as a single shaft instead of visibly repeating.
+        Texture2D descent = Texture(512,768);
+        PaintBackgroundRock(descent, true, 113);
+        Color32 shaftDark = new(7,13,23,255);
+        Color32 shaftRock = new(10,19,31,255);
+        for (int y=0;y<descent.height;y++)
+        for (int x=181;x<=331;x++)
+            descent.SetPixel(x,y,((x/12+y/12)&1)==0?shaftDark:shaftRock);
+        DrawVein(descent,new Vector2Int(180,0),new Vector2Int(187,192),bronze,glint);
+        DrawVein(descent,new Vector2Int(187,192),new Vector2Int(179,384),bronze,glint);
+        DrawVein(descent,new Vector2Int(179,384),new Vector2Int(186,576),bronze,glint);
+        DrawVein(descent,new Vector2Int(186,576),new Vector2Int(180,767),bronze,glint);
+        DrawVein(descent,new Vector2Int(332,0),new Vector2Int(325,192),bronze,glint);
+        DrawVein(descent,new Vector2Int(325,192),new Vector2Int(333,384),bronze,glint);
+        DrawVein(descent,new Vector2Int(333,384),new Vector2Int(326,576),bronze,glint);
+        DrawVein(descent,new Vector2Int(326,576),new Vector2Int(332,767),bronze,glint);
+        Save(descent, MixedDescentBackdropPath);
+    }
+
+    private static void PaintBackgroundRock(Texture2D texture, bool cool, int seed)
+    {
+        Color32[] palette = cool
+            ? new[] { new Color32(10,18,30,255), new Color32(14,25,40,255),
+                new Color32(19,31,48,255), new Color32(23,37,55,255) }
+            : new[] { new Color32(12,17,26,255), new Color32(17,23,34,255),
+                new Color32(22,29,42,255), new Color32(27,35,48,255) };
+        for (int y=0;y<texture.height;y++)
+        for (int x=0;x<texture.width;x++)
+        {
+            int cellX=x/8;
+            int cellY=y/8;
+            int hash=(cellX*37+cellY*61+seed+(cellX*cellY*11))&int.MaxValue;
+            int shade=(hash+(x%8==0?1:0)+(y%8==0?1:0))%palette.Length;
+            if(x%8==0||y%8==0) shade=Mathf.Max(0,shade-1);
+            texture.SetPixel(x,y,palette[shade]);
+        }
+    }
+
     private static void WritePlatform()
     {
         Texture2D t=Texture(96,32);

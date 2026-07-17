@@ -58,9 +58,18 @@ public sealed class LevelEntranceDoor : MonoBehaviour
             return;
         }
 
+    }
+
+    private void Start()
+    {
+        if (hero == null || IsComplete) return;
+
+        // Start runs after every component's Awake, including PlayerHealth's
+        // opaque rest-color cache. Beginning the fade here prevents the entrance
+        // presentation from ever becoming the miner's persistent damage color.
         hero.SetInputLocked(true);
         hero.GetComponent<PlayerHealth>()?.RestoreDamagePresentation();
-        hero.transform.position = new Vector3(transform.position.x, transform.position.y - .2f,
+        hero.transform.position = new Vector3(transform.position.x, transform.position.y + .45f,
             gameplayPosition.z);
         if (heroRenderer != null)
             heroRenderer.color = new Color(originalHeroColor.r, originalHeroColor.g,
@@ -73,11 +82,7 @@ public sealed class LevelEntranceDoor : MonoBehaviour
         }
         if (animator != null) animator.SetFloat("Speed", 1f);
         outfit?.PlayWalkTowardCamera();
-    }
-
-    private void Start()
-    {
-        if (hero != null) entranceRoutine = StartCoroutine(EntranceRoutine());
+        entranceRoutine = StartCoroutine(EntranceRoutine());
     }
 
     private IEnumerator EntranceRoutine()

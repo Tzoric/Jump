@@ -14,9 +14,9 @@ public sealed class ParachuteLaunchZone : MonoBehaviour
     private readonly HashSet<Collider2D> occupants = new();
     private ParachuteDescentController activeController;
     private MineRunInventory activeInventory;
+    private bool lastArmed;
 
-    public static string Prompt =>
-        $"PARACHUTE DROP: PRESS {MineInput.GetControllerBindingDisplayName(MineButtonAction.Interact)} / UP / W TO ARM";
+    public static string Prompt => BuildPrompt(false);
 
     public TextMeshPro Sign => sign;
 
@@ -42,6 +42,7 @@ public sealed class ParachuteLaunchZone : MonoBehaviour
         occupants.Clear();
         activeController = null;
         activeInventory = null;
+        lastArmed = false;
     }
 
     private void OnTriggerEnter2D(Collider2D other)
@@ -55,7 +56,9 @@ public sealed class ParachuteLaunchZone : MonoBehaviour
         activeController = controller;
         activeInventory = controller.GetComponent<MineRunInventory>();
         activeController.EnterLaunchArea();
-        activeInventory?.ShowMessage(Prompt);
+        lastArmed = activeController.IsDeploymentRequested;
+        activeInventory?.ShowMessage(BuildPrompt(lastArmed));
+        RefreshSign();
     }
 
     private void OnTriggerStay2D(Collider2D other)
@@ -70,13 +73,34 @@ public sealed class ParachuteLaunchZone : MonoBehaviour
         activeInventory?.RestoreProgressStatus();
         activeController = null;
         activeInventory = null;
+        lastArmed = false;
+        RefreshSign();
+    }
+
+    private void Update()
+    {
+        if (activeController == null) return;
+        bool armed = activeController.IsDeploymentRequested;
+        if (armed == lastArmed) return;
+        lastArmed = armed;
+        activeInventory?.ShowMessage(BuildPrompt(armed));
+        RefreshSign();
     }
 
     private void RefreshSign()
     {
         if (sign == null) return;
         string button = MineInput.GetControllerBindingDisplayName(MineButtonAction.Interact);
-        sign.text = $"PARACHUTE DROP\nSTEP OFF THE MARKED RIGHT SIDE\n" +
-                    $"PRESS {button} / UP / W TO OPEN\nPRESS AGAIN TO FAST-DROP";
+        sign.text = lastArmed
+            ? $"PARACHUTE ARMED\nSTEP OFF THE MARKED RIGHT SIDE\n{button} / UP / W CANCELS"
+            : $"PARACHUTE DROP\nSTEP OFF THE MARKED RIGHT SIDE\nPRESS {button} / UP / W TO ARM";
+    }
+
+    private static string BuildPrompt(bool armed)
+    {
+        string button = MineInput.GetControllerBindingDisplayName(MineButtonAction.Interact);
+        return armed
+            ? $"PARACHUTE ARMED - STEP OFF THE RIGHT EDGE. PRESS {button} / UP / W AGAIN TO CANCEL."
+            : $"PARACHUTE DROP: PRESS {button} / UP / W TO ARM, THEN STEP OFF THE RIGHT EDGE.";
     }
 }

@@ -10,6 +10,7 @@ public sealed class VerticalCameraFollow : MonoBehaviour
     [SerializeField, Min(0.01f)] private float smoothTime = 0.16f;
 
     private float verticalVelocity;
+    private LevelEntranceDoor entrance;
 
     public void Configure(Transform followTarget, float x, float minY, float maxY, float lookAhead)
     {
@@ -20,6 +21,8 @@ public sealed class VerticalCameraFollow : MonoBehaviour
         verticalLookAhead = lookAhead;
     }
 
+    private void Awake() => entrance = FindFirstObjectByType<LevelEntranceDoor>();
+
     private void LateUpdate()
     {
         if (target == null)
@@ -27,7 +30,10 @@ public sealed class VerticalCameraFollow : MonoBehaviour
             return;
         }
 
-        float desiredY = Mathf.Clamp(target.position.y + verticalLookAhead, minimumY, maximumY);
+        float targetY = entrance != null && !entrance.IsComplete
+            ? entrance.GameplayPosition.y
+            : target.position.y;
+        float desiredY = Mathf.Clamp(targetY + verticalLookAhead, minimumY, maximumY);
         float y = Mathf.SmoothDamp(transform.position.y, desiredY, ref verticalVelocity, smoothTime);
         transform.position = new Vector3(fixedX, y, transform.position.z);
     }

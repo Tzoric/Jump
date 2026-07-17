@@ -4,7 +4,7 @@
 
 `Assets/Scenes/DungeonOverview.unity` is first in Build Settings and must always contain an enabled rendering camera. The Bronze Mines overview has twelve interactive mineshafts, one for every playable tunnel. It must never show Unity's `No cameras rendering` message.
 
-Levels unlock sequentially through Level 10. Level 11 unlocks only when Level 10 has been completed and the persistent silver key hidden in Level 10 has been collected. Completing Level 11 unlocks Level 12. Reaching an exit only shows the current Interact binding plus Up/W; a grounded mapped-Interact, Up, or `W` press in range locks control, visibly walks the miner through the supported doorway, records completion, and returns to the overview.
+Levels unlock sequentially through Level 10. Level 11 unlocks only when Level 10 has been completed and the persistent silver key hidden in Level 10 has been collected. Completing Level 11 unlocks Level 12. Every level begins at a supported entrance door: `LevelEntranceDoor` locks control, walks the miner toward the camera from inside the doorway, then restores physics, collision, input, and the authored starting checkpoint. Reaching an exit only shows the current Interact binding plus Up/W; a grounded mapped-Interact, Up, or `W` press in range locks control, visibly walks the miner through the supported doorway, records completion, and returns to the overview.
 
 At any point before the exit or death/respawn sequence begins, mapped Pause (default Start) pauses the current level and mapped Return to Shop (default Back) abandons it to the overview shop. This retreat keeps already-saved rewards and the current life balance, restores normal time, and does not complete the level, unlock another tunnel, or charge a life.
 
@@ -16,17 +16,20 @@ For rapid testing, the Levels page contains a hidden, session-only **Foreman's M
 
 ## Project conventions
 
+- The current editor baseline is Unity 6.3 LTS, `6000.3.20f1`. Open, build, serialize, and validate the project with that version unless a later migration deliberately updates `ProjectSettings/ProjectVersion.txt` and this guide together.
 - Put gameplay scripts in `Assets/Scripts` and editor/build tools in `Assets/Editor`.
 - Put playable scenes in `Assets/Scenes` and enable the overview followed by Levels 1-12 in progression order.
 - Build reusable objects as prefabs instead of duplicating configured scene objects.
 - Commit `.meta` files with their matching Unity assets.
-- Every ordinary exit door must have a solid platform directly beneath it and an enabled proximity trigger. Contact only shows the exit prompt; grounded mapped Interact or keyboard Up/W starts entry. Only an explicit level brief may allow a floating door.
+- Every level must contain exactly one `LevelEntranceDoor` and one exit door, both supported by solid platforms. The entrance owns the automatic front-facing walk-out intro and is not interactable after arrival. The exit retains its enabled proximity trigger; contact only shows the prompt and grounded mapped Interact or keyboard Up/W starts entry. Only an explicit level brief may allow a floating door.
 - Bronze spike damage uses `SpikeHitboxGeometry`: one `PolygonCollider2D` trigger with three inset triangular paths matching the visible teeth. Never replace it with a sprite-sized box or add damage across the transparent side/valley pixels; transforms apply rotation and non-uniform scale to art and collider together.
 - Mine platforms use irregular dark rocks with bronze mineral veins through and between them. Do not render them as bronze-framed rectangles.
 - Keep platform visuals and colliders thinner than the initial prototype while preserving stable landings.
 - Derive ordinary vertical headroom from the hero collider. For overlapping usable platform spans, require at least `standing collider height + 0.75` world units between the lower top and upper underside on main and optional routes.
 - Do not silently waive headroom validation. A deliberately tight section must be named/tagged `Intentional Head-Bump Challenge`, documented in its level brief, visibly readable, and verified not to trap or damage the player invisibly.
 - Orient background composition to the shaft: vertical, angled, horizontal, or downward. Levels 2, 5, 8, and 11, plus Level 12's angled sections, use dedicated diagonal-mine artwork in its authored orientation; do not simulate a diagonal mine by rotating the ordinary backdrop.
+- Construct long and mixed levels from modular direction and transition pieces at uniform scale. Tile them beyond every camera edge and beneath fall corridors instead of non-uniformly stretching a single backdrop. Keep background-only beams and rails subdued; visible foreground rock and shaft-wall art must agree with actual collision.
+- Treat player-supplied stick-figure route sketches as source briefs. First convert a sketch into section bounds, ordered waypoints, collision walls, launch/landing shelves, hazards, camera framing, and background-module assignments; then build scenery around that plan. Incidental detail in a scenic painting does not define collision.
 
 ## Player rules and presentation
 
@@ -63,9 +66,9 @@ All gameplay scripts read player controls through `MineInput`; do not add indepe
 | Confirm UI selection | A | Enter, keypad Enter, or Space |
 
 - `Assets/Resources/MineControllerActions.inputactions` is the controller-only six-button action asset. Its stable action/binding GUIDs are part of the save contract; do not recreate these bindings with random runtime IDs.
-- `MineInput` instantiates that asset, locks gameplay to one selected `Gamepad` or `Joystick`, loads a versioned PlayerPrefs override profile derived from the controller model, and exposes the existing static input facade. Movement, keyboard fallbacks, and UI Submit are intentionally outside those overrides.
+- `MineInput` instantiates that asset, selects one active `Gamepad` or `Joystick` from meaningful stick, D-pad, or button activity, loads a versioned PlayerPrefs override profile derived from the controller model, and exposes the existing static input facade. When Unity reports a semantic `Gamepad` and a noisy generic `Joystick` at the same time, prefer the semantic device until the player deliberately activates another controller. Generic DirectInput joysticks receive common Run/Jump/Interact/Potion/Home/Pause defaults and remain remappable. Movement, keyboard fallbacks, and UI Submit are intentionally outside those overrides.
 - `MineControlsController` owns the overview Controls page. It waits until the UI Submit press has been released, temporarily disables `InputSystemUIInputModule`, captures one button from the selected controller, saves automatically, and always disposes the rebind operation on completion, cancellation, timeout, page close, or device loss.
-- Run, Jump, Interact/Parachute, Potion, Pause, and Return to Shop are remappable. Parachute is a contextual held use of Interact, leaving Jump independent. Selecting a button already assigned elsewhere swaps the two paths to prevent duplicate actions. **Restore Defaults** removes only the current controller-model profile. `GameProgress.RestartAfterGameOver` must not erase controller preferences.
+- Run, Jump, Interact/Parachute, Potion, Pause, and Return to Shop are remappable. Parachute is a contextual press-to-toggle use of Interact, leaving Jump independent: press once in the marked launch/descent area to arm or open it, then press again to close it for a fast-drop. Selecting a button already assigned elsewhere swaps the two paths to prevent duplicate actions. **Restore Defaults** removes only the current controller-model profile. `GameProgress.RestartAfterGameOver` must not erase controller preferences.
 - Left stick/D-pad movement, all keyboard keys, and UI navigation/A-submit remain fixed so the mapping screen and Game Over can never become unreachable. Do not feed gameplay binding overrides into `InputSystemUIInputModule`.
 - `MineShopController` owns the overview-only `MINER` / ten-direction playtest easter egg. Ignore it away from the Levels page and during rebinding. Direction steps require a neutral release so one held stick direction cannot fill the sequence; no face button may be part of the controller code because fixed UI Submit could launch a level early.
 - A Logitech F310 is most predictable in **XInput/X mode**, where Unity exposes semantic A/B/X/Y, Start, and Back defaults. Other supported `Gamepad`/`Joystick` layouts can be captured on the Controls page; keep X mode as the recommended test configuration.
@@ -141,7 +144,7 @@ Difficulty and length increase through the sequence. Levels 1-11 follow the vert
 
 ### Horizontal bottomless pits
 
-Levels 3, 6, and 9, along with Level 12's horizontal sections, place separated horizontal platforms above localized lethal pits. `DamageZone` or the level's lethal-fall component must route these falls through the normal death/life system. Do not reuse Level 2's nonlethal reset behavior for these tunnels.
+Levels 3, 6, and 9, along with Level 12's horizontal sections, place separated horizontal platforms above localized lethal pits. Use `FatalFallZone`, not `DamageZone`, so a pit immediately routes through the normal death/life system even if ordinary hit invulnerability is active. Do not reuse Level 2's nonlethal reset behavior for these tunnels.
 
 Level 3 has a dedicated regression contract for the reported invisible-death bug: every lethal trigger must be horizontally contained by a visible pit gap and vertically below its adjacent platform tops. No lethal collider may intersect the spawn, a platform collider, an automated waypoint, a required landing envelope, or the normal jump corridor. The focused automated regression must cross the first visible gap and reach the first authored landing with five hearts and zero respawns; later deaths are valid only after a visibly missed pit jump or hazard hit.
 
@@ -164,12 +167,14 @@ Level 3 has a dedicated regression contract for the reported invisible-death bug
 
 - Completing Level 11 is the only Level 12 unlock requirement; Level 11's silver-key gate remains unchanged.
 - Build a very long twelve-section route containing exactly three each of vertical-up, angled-up, horizontal, and vertical-down traversal. Use a stable seed so the order looks shuffled while builds, validation, and automated routes remain reproducible.
-- Horizontal sections use visible platform gaps with localized lethal triggers contained beneath those gaps.
-- Each downward section begins with a readable parachute prompt. Hold mapped Interact or Up/W to deploy the parachute and slow descent, release it to fast-drop, and steer horizontally through the authored safe lanes. Space/B remains Jump.
+- Horizontal sections use visible platform gaps with localized `FatalFallZone` triggers contained beneath those gaps. Add one safely low global `FatalFallZone` below the complete mixed route so an off-route fall cannot survive through damage invulnerability or reach unintended lower geometry.
+- When a horizontal section feeds a descent, omit an ambiguous final local pit and bridge to a broad launch shelf. Place the shaft opening beyond the shelf's right edge so the player can approach, stop, read the drop, and intentionally step off.
+- Each downward section begins with a readable, binding-aware parachute prompt. Press mapped Interact or Up/W once in the launch/descent area to arm or deploy the parachute and slow descent; press again to close it for a fast-drop while steering through the authored safe lanes. Space/B remains Jump and `HeroMovement.SetJumpSuppressed` must not be used by the chute.
+- Entering the trigger may reveal the prompt, but `ParachuteDescentController` does not enable parachute physics or descent-camera tracking until the hero is airborne and descending. Grounded approaches and landings retain ordinary Jump, and deployment state resets between descents.
 - Downward hazards include camouflaged wall spikes and moving hazards. Hidden spikes must reveal and warn before becoming damaging, leave a viable dodge lane, and remove exactly one heart per hit.
-- Initialize the mixed camera at the miner. Outside descent mode use a vertical dead zone; in descent mode lock horizontal framing to the shaft center and use a canopy-visible downward offset. Do not switch framing merely because ordinary jump velocity crosses a threshold.
+- Initialize the mixed camera at the miner. Outside descent mode use a vertical dead zone with smoothed velocity look-ahead; during an active airborne descent, blend rather than snap toward the shaft center and canopy-visible downward offset. Do not switch framing merely because the trigger is entered or ordinary jump velocity crosses a threshold.
 - End every chute trigger above the landing stance and any outgoing ledge. For a nonterminal descent, keep the lower-right exit clear by ending its visible/collision wall above the first two outgoing ledges and placing the final fixed spike on the left wall.
-- Compose Level 12 from direction-specific background pieces. Downward sections use a dedicated cool-dark layer rendered above adjacent section backdrops and visible bronze-veined rock faces aligned to every shaft-wall collider. Its diagonal sections use the same dedicated, unrotated diagonal-mine artwork as the other angled Bronze Mines levels.
+- Compose Level 12 from direction-specific modular background tiles at uniform scale, with enough overlap and horizontal/vertical overscan that no camera position exposes black outside the art. Downward sections use a dedicated cool-dark layer rendered above adjacent section backdrops and visible bronze-veined rock faces aligned to every shaft-wall collider. Its diagonal sections use the same dedicated, unrotated diagonal-mine artwork as the other angled Bronze Mines levels. Dim background-only structural detail so it does not read as collision.
 
 ## Build and validation
 
@@ -187,10 +192,11 @@ Validation should fail if any of the following contracts are broken:
 
 - The overview has no active camera or does not have twelve level nodes.
 - A scene or level node is missing from progression order.
-- A level lacks a bronze key, chest, supported exit, player, camera, or automated route.
+- A level lacks a bronze key, chest, exactly one supported entrance, supported exit, player, camera, or automated route.
+- An entrance is unsupported, misaligned with the authored start, omits `LevelEntranceDoor`, fails to use the front-facing walk-out state, or does not restore normal collider, physics, input, and checkpoint state after the intro.
 - An exit completes on contact, lacks an enabled mapped-Interact/Up/W proximity trigger, omits the dynamic exit prompt, or bypasses the visible walk-in sequence.
 - A chest opens merely from contact, lacks an enabled mapped-Interact/Up/W proximity trigger, has no distinct open-state sprite, or silently ignores a replayed already-claimed state.
-- The controller action asset loses any of its six stable defaults/GUIDs, `MineInput` stops loading per-model overrides, or movement omits either the left stick or left D-pad.
+- The controller action asset loses any of its six stable defaults/GUIDs, `MineInput` stops loading per-model overrides, movement omits either the left stick or left D-pad, meaningful activity cannot select among attached devices, a noisy duplicate joystick steals control from an active semantic gamepad, or a generic DirectInput controller has no usable button defaults.
 - The overview lacks distinct Levels/Shop/Controls pages, six wired mapping rows, active-controller/status labels, per-model help, conflict-safe capture, or Restore Defaults.
 - Gameplay overrides alter keyboard controls or `InputSystemUIInputModule`, duplicate two actions instead of swapping, survive Restore Defaults, or are erased by Game Over Restart.
 - A level lacks its initially hidden `MineLevelMenuController` pause panel, dynamic `MineControlHintDisplay`, Resume action, or Return-to-Shop action.
@@ -201,18 +207,18 @@ Validation should fail if any of the following contracts are broken:
 - Level 2's upper centers do not rise diagonally, widths and two-axis gaps do not vary, or the 18-degree low-friction ramp is not parallel beneath the route.
 - Any Level 2 ramp spike points sideways instead of upward, or the no-input slide does not reach the retry bottom.
 - Any spike uses a rectangular damage collider, differs from the three inset triangle paths, misses a visible tooth center, or overlaps either transparent valley after its authored transform.
-- Levels 3, 6, or 9 lack lethal pit zones, or Level 12's localized pit triggers extend outside their visible horizontal gaps.
+- Levels 3, 6, or 9 lack `FatalFallZone` pit zones, Level 12's localized fatal triggers extend outside their visible horizontal gaps, or its global off-route abyss is missing.
 - Any Level 3 lethal trigger overlaps playable geometry or an intended movement corridor, or the focused spawn-to-first-landing regression loses health or a life.
 - Final-life depletion bypasses `GameOver.unity`, Restart fails to restore three lives, or any crystals, potions, upgrades, unlocks, keys, or opened-chest state survives Restart.
 - Level 10 lacks the silver key.
 - A Level 10 required landing is not marked `UsePowerJump`, or a same-height spike leaves less than 0.25 world units of horizontal landing clearance after hero and spike extents are included.
 - Level 11 does not have exactly five blue value-5 crystals and one purple value-20 crystal.
-- Level 12 does not contain exactly three sections of each required direction, a reproducible seeded order, parachute-enabled descents, airborne route coverage, or fair-reveal one-heart hazards with viable dodge lanes.
+- Level 12 does not contain exactly three sections of each required direction, a reproducible seeded order, safely readable launch shelves, binding-aware parachute prompts, independent Jump throughout chute triggers, airborne-only descent activation, smoothly blended shaft framing, modular overscan background coverage, airborne route coverage, or fair-reveal one-heart hazards with viable dodge lanes.
 - Shop prices, heart count, starting lives, damage, or potion healing differ from the design values.
 - Ordinary walk/run tuning differs from 7.5/9, ordinary/power jump tuning differs from 12/.24 and 14.75/.26, a directional Run+Jump commitment is downgraded during anticipation, or a grounded jump does not preserve the approximately 0.08-second squat before its upward impulse.
 - The side jump cells do not follow the documented row-2 order, or a quick tap can be discarded before takeoff.
 - The hero collider has friction that allows sustained wall/ledge sticking, the HUD uses an unsupported empty-heart glyph, the Bronze Miner renders a pickaxe, or an absent optional tool breaks the outfit contract.
-- An angled Bronze Mines level or Level 12 angled section rotates the ordinary backdrop instead of using the dedicated diagonal-mine artwork in its authored orientation.
+- An angled Bronze Mines level or Level 12 angled section rotates the ordinary backdrop instead of using the dedicated diagonal-mine artwork in its authored orientation, or a Level 12 background module is non-uniformly stretched or leaves a camera-visible void.
 
 ## Automated playtest
 
@@ -231,7 +237,7 @@ Supported focused flags are:
 - `-playtestFailOnDamage` fails as soon as the miner loses a heart.
 - `-playtestPowerRun` holds Run for all eligible jumps; per-waypoint `UsePowerJump` still works without this global flag.
 - `-playtestPassAfterWaypoints <count>` ends after a focused waypoint count, such as Level 3's first-gap regression.
-- `-playtestStartAfterWaypoint <order>` places the miner on that grounded waypoint and begins with the next route goal. This test-only shortcut isolates later regressions without changing the playable scene; for example, Level 12 can start after waypoint 7 and pass after waypoint 14 to exercise its first chute, landing, open wall breakout, and two outgoing jumps.
+- `-playtestStartAfterWaypoint <order>` places the miner on that grounded waypoint and begins with the next route goal. This test-only shortcut isolates later regressions without changing the playable scene. For Level 12, starting after waypoint 12 and passing after waypoint 13 isolates the landing-to-breakout run-jump; running from the scene start with power-run enabled and passing after waypoint 13 covers the opening route, first chute, landing, and corrected flat transition shelf.
 - `-playtestReturnHome` skips traversal after the initial grounded spawn, first enters the zero-time-scale pause state, and then invokes `MineLevelMenuController.ReturnToOverview`. It passes only if `DungeonOverview` loads with the Shop page visible, `Time.timeScale` restored to 1, and unlock, crystal, life, and potion values unchanged.
 - `-playtestTraceFirstJump` logs the first launch's position, velocity, grounded/preparation state, and target at short intervals for diagnosing ledge-side collisions. The route driver begins its squat about two world units before a support edge, accounting for horizontal travel during the anticipation pose.
 
@@ -245,20 +251,23 @@ The same mechanics smoke test enters both Foreman's Master Key codes, confirms a
 
 Chest smoke coverage verifies that contact alone does not open a chest, a mapped-Interact/Up/W interaction without the key is rejected, a keyed interaction grants exactly one deterministic reward, a second interaction cannot duplicate it, and replay state restores the open sprite, prompt trigger, hidden collected key, and `CHEST ALREADY OPENED` feedback.
 
-Door smoke coverage verifies that contact alone leaves the exit unused, proximity displays the current Interact binding plus Up/W, and an explicit grounded mapped-Interact/Up/W interaction starts the existing kinematic walk-through transition. The full virtual-controller traversal then verifies that this explicit activation reaches only the configured overview scene.
+Entrance validation verifies exactly one supported start door per level, its alignment with the authored gameplay start, and a sufficiently long front-facing walk-out transition. Door smoke coverage verifies that contact alone leaves the exit unused, proximity displays the current Interact binding plus Up/W, and an explicit grounded mapped-Interact/Up/W interaction starts the existing kinematic walk-through transition. The full virtual-controller traversal then verifies that this explicit activation reaches only the configured overview scene.
 
 The unattended command requires other Unity instances using the project to be closed. A timeout means the controller failed to execute the authored route or the door transition did not complete.
 
 ## Reusable mechanics
 
-- `DamageZone` handles stationary hazards and lethal pits.
+- `DamageZone` handles ordinary heart-damage hazards such as spikes. It is not the bottomless-pit implementation.
+- `FatalFallZone` calls the player's fatal-fall path on trigger enter/stay, bypassing ordinary hit invulnerability and routing directly through life, respawn, and Game Over handling. Use it for every bottomless gap and the safely low Level 12 off-route abyss.
+- `LevelEntranceDoor` owns the automatic supported-door arrival: it locks input, disables normal collision/physics during the short front-facing walk-out, and restores the authored gameplay position and checkpoint afterward.
 - `SpikeHitboxGeometry` authors the only valid Bronze spike trigger: three disconnected inset triangular paths, with no damaging base strip or valley air.
 - `FallingSpike` warns, falls when the player passes below, and resets.
 - `MovingPlatform` supports horizontal or vertical travel with pauses.
 - `WeightedBreakablePlatform` spends durability according to apparent weight.
 - `PlayerWeight` is the inventory and power-up integration point.
 - The Level 2 reset zone returns a fallen miner to the start without consuming a life.
-- Level 12 descent zones suppress jump only while traversing the chute, map held contextual Interact/Up/W to deployment, end before landing/outgoing ledges, restore normal gravity on exit/reset, and support slower deployed descent plus a released fast-drop.
+- Level 12 descent zones never suppress Jump. A discrete contextual Interact/Up/W press toggles the armed/deployed state; deployment physics applies only while airborne and descending. Zones end before landing/outgoing ledges, restore normal gravity/state on exit or reset, and support a second-press fast-drop.
+- `ParachuteInstructionDisplay` presents the current mapped Interact binding and fixed Up/W fallback at the approach so the chute can be learned without sacrificing the Jump button.
 - Fair-reveal hidden hazards expose a warning before enabling one-heart damage; moving descent hazards preserve a reachable safe lane.
 - Bronze-key, chest, silver-key, crystal, and completion state must use persistent progression data rather than scene-only state.
 
@@ -273,7 +282,8 @@ Apparent weight is `(base + carried) x weight multiplier x gravity multiplier`.
 - The Bronze Miner has no visible pickaxe, while the optional hand-tool attachment remains available for future profiles.
 - The anticipation squat is visibly held before the miner leaves the ground, transitions directly into the rise pose, and never appears suspended in midair.
 - Door entry keeps the miner visible until the character passes into the doorway.
-- Levels 2, 5, 8, and 11 use dedicated unrotated diagonal-mine artwork, and Level 12 changes background composition with each route section.
+- Every entrance keeps the miner visible while the front-facing walk cycle emerges from the supported doorway, with no controllable or collidable half-transition frame.
+- Levels 2, 5, 8, and 11 use dedicated unrotated diagonal-mine artwork, and Level 12 changes background composition with uniformly scaled modular tiles for each route section. Camera overscan never reveals missing art, and decorative background beams do not masquerade as solid obstacles.
 - Empty heart slots read as dim filled hearts rather than missing-font squares.
 - Sustained movement into a wall or platform edge does not leave the miner friction-locked in place.
 - Side locomotion has distinct walk, run, rise, apex, fall, and land states with readable transitions.

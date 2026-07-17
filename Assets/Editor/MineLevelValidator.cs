@@ -20,6 +20,11 @@ public static class MineLevelValidator
     private const string MinerAnimationArt = "Assets/Art/Generated/MinerAnimationSheet.png";
     private const string BackdropArt = "Assets/Art/Generated/MineLevel1BronzeBackdrop.png";
     private const string DiagonalBackdropArt = "Assets/Art/Generated/MineDiagonalBronzeBackdrop.png";
+    private const string FarCaveBackdropArt = "Assets/Art/Generated/MineFarCaveTile.png";
+    private const string MixedHorizontalBackdropArt = "Assets/Art/Generated/MineHorizontalTunnelTile.png";
+    private const string MixedVerticalBackdropArt = "Assets/Art/Generated/MineVerticalShaftTile.png";
+    private const string MixedDiagonalBackdropArt = "Assets/Art/Generated/MineDiagonalShaftTile.png";
+    private const string MixedDescentBackdropArt = "Assets/Art/Generated/MineDescentShaftTile.png";
     private const string DoorArt = "Assets/Art/Generated/MineExitDoor.png";
     private const string ClosedChestArt = "Assets/Art/Generated/BronzeRewardChest.png";
     private const string OpenChestArt = "Assets/Art/Generated/BronzeRewardChestOpen.png";
@@ -486,22 +491,34 @@ public static class MineLevelValidator
                 hero.transform.position) <= .05f && entrance.EntranceSeconds >= .5f,
             $"{level.SceneName} entrance door must walk the scene hero to the authored start position.");
         SpriteRenderer renderer = entrance.GetComponent<SpriteRenderer>();
-        Require(renderer != null && renderer.sprite != null && renderer.sortingOrder > 10 &&
+        Require(renderer != null && renderer.sprite != null && renderer.sortingOrder == 5 &&
                 NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(DoorArt),
-            $"{level.SceneName} entrance must use the mine-door art in front of the emerging miner.");
+            $"{level.SceneName} entrance must use the mine-door art behind the emerging miner.");
         Require(Mathf.Abs(entrance.transform.position.x - entrance.GameplayPosition.x) <= .1f &&
                 entrance.transform.position.y > entrance.GameplayPosition.y,
             $"{level.SceneName} entrance door is not aligned behind the hero's start position.");
 
-        Collider2D support = SceneComponents<Collider2D>().FirstOrDefault(collider =>
-            collider != null && collider.enabled && !collider.isTrigger &&
-            collider.transform != hero.transform &&
-            collider.bounds.min.x < entrance.transform.position.x &&
-            collider.bounds.max.x > entrance.transform.position.x &&
-            collider.bounds.max.y < entrance.GameplayPosition.y &&
-            entrance.GameplayPosition.y - collider.bounds.max.y < 3f);
-        Require(support != null,
-            $"{level.SceneName} entrance door must stand on the level's solid starting platform.");
+        Require(entrance.GetComponentsInChildren<Collider2D>(true).Length == 0 &&
+                entrance.GetComponent<LevelExitDoor>() == null,
+            $"{level.SceneName} entrance door must be noninteractive and have no collision trigger.");
+
+        Transform[] foundations = SceneTransforms().Where(transform =>
+            transform.name == "Entrance Door Foundation (Required)").ToArray();
+        Require(foundations.Length == 1,
+            $"{level.SceneName} must reuse exactly one start platform as its entrance foundation.");
+        Collider2D foundation = foundations[0].GetComponent<Collider2D>();
+        SpriteRenderer foundationRenderer = foundations[0].GetComponent<SpriteRenderer>();
+        float arrivalClearance = foundation == null
+            ? float.MaxValue
+            : entrance.GameplayPosition.y - foundation.bounds.max.y;
+        Require(foundation != null && foundation.enabled && !foundation.isTrigger &&
+                foundation.gameObject.layer == LayerMask.NameToLayer("Ground") &&
+                foundation.CompareTag("Ground") && foundationRenderer != null &&
+                NormalizePath(AssetDatabase.GetAssetPath(foundationRenderer.sprite)) == NormalizePath(PlatformArt) &&
+                foundation.bounds.min.x < entrance.transform.position.x &&
+                foundation.bounds.max.x > entrance.transform.position.x &&
+                arrivalClearance >= .7f && arrivalClearance <= 1.7f,
+            $"{level.SceneName} entrance foundation must be the solid bronze start platform directly beneath arrival.");
     }
 
     private static void ValidateLevelMenu(LevelExpectation level)
@@ -759,7 +776,8 @@ public static class MineLevelValidator
     {
         BoxCollider2D[] upper = RoutePlatforms("upper").Where(platform =>
             Mathf.Abs(SignedZ(platform.transform.eulerAngles.z)) <= 1f &&
-            platform.name.IndexOf("upper", StringComparison.OrdinalIgnoreCase) >= 0)
+            (platform.name.IndexOf("upper", StringComparison.OrdinalIgnoreCase) >= 0 ||
+             platform.name == "Entrance Door Foundation (Required)"))
             .OrderBy(platform => platform.bounds.center.x)
             .ToArray();
         int groundLayer = LayerMask.NameToLayer("Ground");
@@ -903,14 +921,12 @@ public static class MineLevelValidator
             .FirstOrDefault(collider => !collider.isTrigger);
         Require(heroCollider != null, $"{level.SceneName} hero needs a collider for pit-clearance validation.");
 
-        DamageZone[] fatalZones = SceneComponents<DamageZone>().Where(zone =>
+        FatalFallZone[] fatalZones = SceneComponents<FatalFallZone>().Where(zone =>
             zone.name.IndexOf("bottomless", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
         Require(fatalZones.Length > 0, $"{level.SceneName} needs lethal bottomless-pit coverage.");
-        Require(fatalZones.All(zone => SerializedInt(zone, "damage") >= GameProgress.BaseHearts),
-            $"{level.SceneName} bottomless zones must be fatal, not one-heart hazards.");
         Collider2D[] fatalTriggers = fatalZones.Select(zone => zone.GetComponent<Collider2D>()).ToArray();
         Require(fatalTriggers.All(trigger => trigger != null && trigger.isTrigger),
-            $"{level.SceneName} every bottomless DamageZone needs a trigger collider.");
+            $"{level.SceneName} every FatalFallZone needs a trigger collider.");
 
         float minimumGap = Mathf.Max(.75f, heroCollider.bounds.size.x * .9f);
         float[] gapWidths = ConsecutiveHorizontalGaps(route);
@@ -1000,8 +1016,7 @@ public static class MineLevelValidator
         HeroMovement levelHero = SceneComponents<HeroMovement>().Single();
         Camera gameplayCamera = cameraFollow.GetComponent<Camera>();
         Vector2 expectedCameraStart = (Vector2)levelHero.transform.position + new Vector2(
-            SerializedFloat(cameraFollow, "horizontalLookAhead"),
-            SerializedFloat(cameraFollow, "upwardLookAhead"));
+            0f, SerializedFloat(cameraFollow, "upwardLookAhead"));
         Require(gameplayCamera != null &&
                 Vector2.Distance(gameplayCamera.transform.position, expectedCameraStart) <= .15f,
             "Level 12 camera must begin at the miner instead of the final route endpoint.");
@@ -1047,17 +1062,27 @@ public static class MineLevelValidator
         ParachuteDescentZone[] zones = SceneComponents<ParachuteDescentZone>();
         Require(zones.Length == 3 && zones.All(zone => zone.MinimumDepth >= 24f),
             "Level 12 must have one deep parachute zone for each downward section.");
+        ParachuteLaunchZone[] launchZones = SceneComponents<ParachuteLaunchZone>();
+        Require(launchZones.Length == 3 && launchZones.All(launch =>
+                launch.GetComponent<BoxCollider2D>() is { isTrigger: true } && launch.Sign != null),
+            "Level 12 must have one marked, non-solid parachute launch area before each shaft.");
 
         Physics2D.SyncTransforms();
-        Collider2D heroBody = levelHero.GetComponentsInChildren<Collider2D>(true)
-            .First(collider => !collider.isTrigger);
-        float standingClearance = heroBody.bounds.size.y + .5f;
         foreach (MineRouteSection descent in descents)
         {
             ParachuteDescentZone zone = descent.GetComponentInChildren<ParachuteDescentZone>(true);
             BoxCollider2D trigger = zone == null ? null : zone.GetComponent<BoxCollider2D>();
+            ParachuteLaunchZone launch = descent.GetComponentInChildren<ParachuteLaunchZone>(true);
+            BoxCollider2D launchTrigger = launch == null ? null : launch.GetComponent<BoxCollider2D>();
+            BoxCollider2D launchShelf = descent.GetComponentsInChildren<BoxCollider2D>(true).Single(collider =>
+                collider.name.IndexOf("Parachute Launch Shelf", StringComparison.OrdinalIgnoreCase) >= 0);
             BoxCollider2D landing = descent.GetComponentsInChildren<BoxCollider2D>(true).Single(collider =>
                 collider.name.IndexOf("Parachute Landing Shelf", StringComparison.OrdinalIgnoreCase) >= 0);
+            Require(launchTrigger != null && launchTrigger.bounds.Intersects(launchShelf.bounds) &&
+                    launchTrigger.bounds.max.x > descent.Entry.x + 1f,
+                $"Level 12 descent {descent.Order} launch prompt must cover its shelf and marked right lip.");
+            Require(trigger != null && trigger.bounds.max.y <= launchShelf.bounds.min.y - .25f,
+                $"Level 12 descent {descent.Order} chute trigger starts while the miner is still standing on the shelf.");
             Require(trigger != null && trigger.bounds.min.y >= landing.bounds.max.y + .75f,
                 $"Level 12 descent {descent.Order} chute trigger reaches through its landing platform.");
 
@@ -1071,8 +1096,11 @@ public static class MineLevelValidator
                 .ToArray();
             Require(outgoing.Length >= 2,
                 $"Level 12 descent {descent.Order} needs two readable outgoing ledges.");
-            Require(outgoing[0].bounds.min.x >= landing.bounds.max.x - .15f &&
-                    outgoing[0].bounds.min.x <= landing.bounds.max.x + 1f,
+            bool flatTransitionShelf = Mathf.Abs(SignedZ(outgoing[0].transform.eulerAngles.z)) <= 1f;
+            float allowedLandingOverlap = flatTransitionShelf ? .6f : .15f;
+            float allowedBreakoutGap = flatTransitionShelf ? 2f : 1f;
+            Require(outgoing[0].bounds.min.x >= landing.bounds.max.x - allowedLandingOverlap &&
+                    outgoing[0].bounds.min.x <= landing.bounds.max.x + allowedBreakoutGap,
                 $"Level 12 descent {descent.Order} first outgoing ledge must clear the miner's head " +
                 "without creating an excessive breakout gap.");
 
@@ -1104,7 +1132,7 @@ public static class MineLevelValidator
         Require(airborne.Length >= 12 && airborne.All(waypoint => waypoint.DeployParachute),
             "Level 12 descents need parachute-enabled airborne safe-lane waypoints around every major hazard.");
 
-        DamageZone[] localPits = SceneComponents<DamageZone>().Where(zone =>
+        FatalFallZone[] localPits = SceneComponents<FatalFallZone>().Where(zone =>
             zone.name.IndexOf("Level 12 Local Bottomless Pit", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
         int horizontalToDescentTransitions = 0;
         for (int index = 0; index + 1 < sections.Length; index++)
@@ -1116,36 +1144,64 @@ public static class MineLevelValidator
         int expectedLocalPits = sections.Count(section =>
             section.SectionType == MineRouteSectionType.Horizontal) * 7 - horizontalToDescentTransitions;
         Require(localPits.Length == expectedLocalPits &&
-                localPits.All(zone => SerializedInt(zone, "damage") >= GameProgress.BaseHearts),
+                localPits.All(zone => zone.GetComponent<Collider2D>() is { isTrigger: true }),
             "Each Level 12 horizontal gap needs fatal coverage except its visibly bridged parachute approach.");
 
-        DamageZone[] globalAbyss = SceneComponents<DamageZone>().Where(zone =>
+        Collider2D[] descentCorridors = SceneComponents<ParachuteDescentZone>()
+            .Select(zone => zone.GetComponent<Collider2D>())
+            .Where(collider => collider != null)
+            .ToArray();
+        string[] pitDescentOverlaps = localPits
+            .SelectMany(pit => descentCorridors
+                .Where(corridor => Intersects2D(pit.GetComponent<Collider2D>().bounds, corridor.bounds))
+                .Select(corridor => $"{pit.name} -> {corridor.name}"))
+            .ToArray();
+        Require(pitDescentOverlaps.Length == 0,
+            "Level 12 bottomless-pit triggers must not intrude invisibly into a later parachute shaft: " +
+            string.Join(", ", pitDescentOverlaps));
+
+        BoxCollider2D[] shaftWalls = SceneComponents<BoxCollider2D>().Where(collider =>
+            collider.name.IndexOf("Descent", StringComparison.OrdinalIgnoreCase) >= 0 &&
+            collider.name.IndexOf("Rock Wall", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
+        Require(shaftWalls.All(wall => localPits.All(pit =>
+                !Intersects2D(wall.bounds, pit.GetComponent<Collider2D>().bounds))),
+            "Level 12 shaft walls must not create a survivable ledge through a bottomless-pit trigger.");
+
+        FatalFallZone[] globalAbyss = SceneComponents<FatalFallZone>().Where(zone =>
             zone.name == "Level 12 Global Off-Route Abyss").ToArray();
-        Require(globalAbyss.Length == 1 && SerializedInt(globalAbyss[0], "damage") >= 99 &&
-                globalAbyss[0].GetComponent<BoxCollider2D>().bounds.max.y <
+        BoxCollider2D abyssTrigger = globalAbyss.Length == 1
+            ? globalAbyss[0].GetComponent<BoxCollider2D>()
+            : null;
+        Require(abyssTrigger != null && abyssTrigger.isTrigger &&
+                abyssTrigger.bounds.max.y <
                 sections.Min(section => Mathf.Min(section.Entry.y, section.Exit.y)) - 4f,
             "Level 12 needs one safely low global abyss so an off-map fall cannot become a walkable void.");
 
         foreach (MineRouteSection section in sections)
         {
             Transform background = section.transform.Find(
-                $"Section {section.Order:00} {section.SectionType} Modular Background");
+                $"Section {section.Order:00} {section.SectionType} Modular Backdrop");
             Require(background != null,
                 $"Level 12 section {section.Order} is missing its modular overscan background.");
-            SpriteRenderer[] tiles = background.GetComponentsInChildren<SpriteRenderer>(true);
-            string expectedArt = section.SectionType == MineRouteSectionType.AngledUp
-                ? DiagonalBackdropArt
-                : BackdropArt;
-            Require(tiles.Length >= 2 && tiles.All(tile => tile.sprite != null &&
+            SpriteRenderer tile = background.GetComponent<SpriteRenderer>();
+            string expectedArt = section.SectionType switch
+            {
+                MineRouteSectionType.Horizontal => MixedHorizontalBackdropArt,
+                MineRouteSectionType.VerticalUp => MixedVerticalBackdropArt,
+                MineRouteSectionType.AngledUp => MixedDiagonalBackdropArt,
+                MineRouteSectionType.VerticalDown => MixedDescentBackdropArt,
+                _ => FarCaveBackdropArt
+            };
+            Require(tile != null && tile.sprite != null && tile.drawMode == SpriteDrawMode.Tiled &&
                     NormalizePath(AssetDatabase.GetAssetPath(tile.sprite)) == NormalizePath(expectedArt) &&
-                    Mathf.Abs(tile.transform.lossyScale.x - tile.transform.lossyScale.y) <= .01f &&
+                    Mathf.Abs(tile.transform.lossyScale.x - 1f) <= .01f &&
+                    Mathf.Abs(tile.transform.lossyScale.y - 1f) <= .01f &&
                     Mathf.Abs(SignedZ(tile.transform.eulerAngles.z)) <= 1f &&
-                    tile.sortingOrder <= -110 && tile.color.r < .5f && tile.color.g < .5f && tile.color.b < .5f),
-                $"Level 12 section {section.Order} background tiles must stay uniformly scaled, dim, and non-collidable-looking.");
+                    tile.sortingOrder <= -110 && tile.color.r < .5f && tile.color.g < .5f && tile.color.b < .5f &&
+                    background.GetComponent<Collider2D>() == null,
+                $"Level 12 section {section.Order} must use its uniformly tiled, dim, non-collidable direction art.");
 
-            Bounds coverage = tiles[0].bounds;
-            for (int tileIndex = 1; tileIndex < tiles.Length; tileIndex++)
-                coverage.Encapsulate(tiles[tileIndex].bounds);
+            Bounds coverage = tile.bounds;
             float requiredBelow = section.SectionType == MineRouteSectionType.Horizontal ? 24f : 10f;
             Require(coverage.min.x <= Mathf.Min(section.Entry.x, section.Exit.x) - 10f &&
                     coverage.max.x >= Mathf.Max(section.Entry.x, section.Exit.x) + 10f &&
@@ -1153,6 +1209,18 @@ public static class MineLevelValidator
                     coverage.max.y >= Mathf.Max(section.Entry.y, section.Exit.y) + 10f,
                 $"Level 12 section {section.Order} background does not cover the camera overscan/fall view.");
         }
+
+        SpriteRenderer farFill = SceneComponents<SpriteRenderer>().SingleOrDefault(renderer =>
+            renderer.name == "Level 12 Continuous Far Cave Fill");
+        float routeMinX = sections.Min(section => Mathf.Min(section.Entry.x, section.Exit.x));
+        float routeMaxX = sections.Max(section => Mathf.Max(section.Entry.x, section.Exit.x));
+        float routeMinY = sections.Min(section => Mathf.Min(section.Entry.y, section.Exit.y));
+        float routeMaxY = sections.Max(section => Mathf.Max(section.Entry.y, section.Exit.y));
+        Require(farFill != null && farFill.drawMode == SpriteDrawMode.Tiled &&
+                NormalizePath(AssetDatabase.GetAssetPath(farFill.sprite)) == NormalizePath(FarCaveBackdropArt) &&
+                farFill.bounds.min.x <= routeMinX - 20f && farFill.bounds.max.x >= routeMaxX + 20f &&
+                farFill.bounds.min.y <= routeMinY - 16f && farFill.bounds.max.y >= routeMaxY + 16f,
+            "Level 12 needs a continuous far-cave fill beyond the complete camera envelope.");
 
         BoxCollider2D[] visibleWalls = SceneComponents<BoxCollider2D>().Where(collider =>
             collider.name.IndexOf("Descent", StringComparison.OrdinalIgnoreCase) >= 0 &&

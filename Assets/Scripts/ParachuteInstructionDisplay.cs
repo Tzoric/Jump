@@ -34,16 +34,35 @@ public sealed class ParachuteInstructionDisplay : MonoBehaviour
         if (promptPanel != null) promptPanel.SetActive(false);
     }
 
-    private void Update() => RefreshVisibility();
+    private void Update()
+    {
+        RefreshText();
+        RefreshVisibility();
+    }
 
     public void RefreshText()
     {
         if (promptText == null) return;
         string interact = MineInput.GetControllerBindingDisplayName(MineButtonAction.Interact);
         string jump = MineInput.GetControllerBindingDisplayName(MineButtonAction.Jump);
-        promptText.text =
-            $"PARACHUTE SHAFT\nSTEP OFF THE MARKED RIGHT EDGE - PRESS {interact} / UP / W TO OPEN\n" +
-            $"PRESS AGAIN TO FAST-DROP     |     {jump} / SPACE ALWAYS JUMPS";
+        if (parachute != null && parachute.IsDeployed)
+        {
+            promptText.text =
+                $"PARACHUTE OPEN\nSTEER WITH LEFT STICK / D-PAD - PRESS {interact} / UP / W AGAIN TO FAST-DROP\n" +
+                $"{jump} / SPACE REMAINS JUMP";
+        }
+        else if (parachute != null && parachute.IsDeploymentRequested)
+        {
+            promptText.text =
+                $"PARACHUTE ARMED\nSTEP OFF THE MARKED RIGHT EDGE - PRESS {interact} / UP / W AGAIN TO CANCEL\n" +
+                $"{jump} / SPACE REMAINS JUMP";
+        }
+        else
+        {
+            promptText.text =
+                $"PARACHUTE SHAFT\nPRESS {interact} / UP / W TO ARM - THEN STEP OFF THE MARKED RIGHT EDGE\n" +
+                $"{jump} / SPACE REMAINS JUMP";
+        }
     }
 
     private void RefreshVisibility()
