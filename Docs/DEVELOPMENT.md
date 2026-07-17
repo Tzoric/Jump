@@ -55,8 +55,8 @@ All gameplay scripts read player controls through `MineInput`; do not add indepe
 |---|---|---|
 | Move | Left stick or left D-pad | Arrow keys or `A` / `D` |
 | Run | Hold A | Hold either Shift key |
-| Jump / parachute | B | Space |
-| Interact with chest or door | X | Up Arrow or `W` |
+| Jump | B | Space |
+| Interact with chest/door or deploy parachute | X | Up Arrow or `W` |
 | Use health potion | Y | `H` |
 | Pause / resume | Start | Escape or `P` |
 | Return to overview shop | Back | Backspace |
@@ -65,7 +65,7 @@ All gameplay scripts read player controls through `MineInput`; do not add indepe
 - `Assets/Resources/MineControllerActions.inputactions` is the controller-only six-button action asset. Its stable action/binding GUIDs are part of the save contract; do not recreate these bindings with random runtime IDs.
 - `MineInput` instantiates that asset, locks gameplay to one selected `Gamepad` or `Joystick`, loads a versioned PlayerPrefs override profile derived from the controller model, and exposes the existing static input facade. Movement, keyboard fallbacks, and UI Submit are intentionally outside those overrides.
 - `MineControlsController` owns the overview Controls page. It waits until the UI Submit press has been released, temporarily disables `InputSystemUIInputModule`, captures one button from the selected controller, saves automatically, and always disposes the rebind operation on completion, cancellation, timeout, page close, or device loss.
-- Run, Jump/Parachute, Interact, Potion, Pause, and Return to Shop are remappable. Selecting a button already assigned elsewhere swaps the two paths to prevent duplicate actions. **Restore Defaults** removes only the current controller-model profile. `GameProgress.RestartAfterGameOver` must not erase controller preferences.
+- Run, Jump, Interact/Parachute, Potion, Pause, and Return to Shop are remappable. Parachute is a contextual held use of Interact, leaving Jump independent. Selecting a button already assigned elsewhere swaps the two paths to prevent duplicate actions. **Restore Defaults** removes only the current controller-model profile. `GameProgress.RestartAfterGameOver` must not erase controller preferences.
 - Left stick/D-pad movement, all keyboard keys, and UI navigation/A-submit remain fixed so the mapping screen and Game Over can never become unreachable. Do not feed gameplay binding overrides into `InputSystemUIInputModule`.
 - `MineShopController` owns the overview-only `MINER` / ten-direction playtest easter egg. Ignore it away from the Levels page and during rebinding. Direction steps require a neutral release so one held stick direction cannot fill the sequence; no face button may be part of the controller code because fixed UI Submit could launch a level early.
 - A Logitech F310 is most predictable in **XInput/X mode**, where Unity exposes semantic A/B/X/Y, Start, and Back defaults. Other supported `Gamepad`/`Joystick` layouts can be captured on the Controls page; keep X mode as the recommended test configuration.
@@ -165,10 +165,11 @@ Level 3 has a dedicated regression contract for the reported invisible-death bug
 - Completing Level 11 is the only Level 12 unlock requirement; Level 11's silver-key gate remains unchanged.
 - Build a very long twelve-section route containing exactly three each of vertical-up, angled-up, horizontal, and vertical-down traversal. Use a stable seed so the order looks shuffled while builds, validation, and automated routes remain reproducible.
 - Horizontal sections use visible platform gaps with localized lethal triggers contained beneath those gaps.
-- Each downward section begins with a readable parachute prompt. Hold Jump to deploy the parachute and slow descent, release Jump to fast-drop, and steer horizontally to pass the authored safe lanes.
+- Each downward section begins with a readable parachute prompt. Hold mapped Interact or Up/W to deploy the parachute and slow descent, release it to fast-drop, and steer horizontally through the authored safe lanes. Space/B remains Jump.
 - Downward hazards include camouflaged wall spikes and moving hazards. Hidden spikes must reveal and warn before becoming damaging, leave a viable dodge lane, and remove exactly one heart per hit.
-- Use a descent-aware camera and airborne automated waypoints so the view and unattended playtest lead the player toward upcoming hazards rather than looking above the miner.
-- Compose Level 12 from direction-specific background pieces. Its diagonal sections use the same dedicated, unrotated diagonal-mine artwork as the other angled Bronze Mines levels.
+- Initialize the mixed camera at the miner. Outside descent mode use a vertical dead zone; in descent mode lock horizontal framing to the shaft center and use a canopy-visible downward offset. Do not switch framing merely because ordinary jump velocity crosses a threshold.
+- End every chute trigger above the landing stance and any outgoing ledge. For a nonterminal descent, keep the lower-right exit clear by ending its visible/collision wall above the first two outgoing ledges and placing the final fixed spike on the left wall.
+- Compose Level 12 from direction-specific background pieces. Downward sections use a dedicated cool-dark layer rendered above adjacent section backdrops and visible bronze-veined rock faces aligned to every shaft-wall collider. Its diagonal sections use the same dedicated, unrotated diagonal-mine artwork as the other angled Bronze Mines levels.
 
 ## Build and validation
 
@@ -230,6 +231,7 @@ Supported focused flags are:
 - `-playtestFailOnDamage` fails as soon as the miner loses a heart.
 - `-playtestPowerRun` holds Run for all eligible jumps; per-waypoint `UsePowerJump` still works without this global flag.
 - `-playtestPassAfterWaypoints <count>` ends after a focused waypoint count, such as Level 3's first-gap regression.
+- `-playtestStartAfterWaypoint <order>` places the miner on that grounded waypoint and begins with the next route goal. This test-only shortcut isolates later regressions without changing the playable scene; for example, Level 12 can start after waypoint 7 and pass after waypoint 14 to exercise its first chute, landing, open wall breakout, and two outgoing jumps.
 - `-playtestReturnHome` skips traversal after the initial grounded spawn, first enters the zero-time-scale pause state, and then invokes `MineLevelMenuController.ReturnToOverview`. It passes only if `DungeonOverview` loads with the Shop page visible, `Time.timeScale` restored to 1, and unlock, crystal, life, and potion values unchanged.
 - `-playtestTraceFirstJump` logs the first launch's position, velocity, grounded/preparation state, and target at short intervals for diagnosing ledge-side collisions. The route driver begins its squat about two world units before a support edge, accounting for horizontal travel during the anticipation pose.
 
@@ -256,7 +258,7 @@ The unattended command requires other Unity instances using the project to be cl
 - `WeightedBreakablePlatform` spends durability according to apparent weight.
 - `PlayerWeight` is the inventory and power-up integration point.
 - The Level 2 reset zone returns a fallen miner to the start without consuming a life.
-- Level 12 descent zones suppress ordinary jump launch, map held Jump to parachute deployment, restore normal gravity on exit/reset, and support slower deployed descent plus a released fast-drop.
+- Level 12 descent zones suppress jump only while traversing the chute, map held contextual Interact/Up/W to deployment, end before landing/outgoing ledges, restore normal gravity on exit/reset, and support slower deployed descent plus a released fast-drop.
 - Fair-reveal hidden hazards expose a warning before enabling one-heart damage; moving descent hazards preserve a reachable safe lane.
 - Bronze-key, chest, silver-key, crystal, and completion state must use persistent progression data rather than scene-only state.
 

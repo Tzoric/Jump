@@ -37,11 +37,11 @@ public sealed class MineControlHintDisplay : MonoBehaviour
             levelInstructions.text = $"{levelObjective}\n" +
                 $"CONTROLLER: STICK / D-PAD MOVE  |  {Button(MineButtonAction.Run)} RUN + " +
                 $"{Button(MineButtonAction.Jump)} JUMP = POWER JUMP  |  " +
-                $"{Button(MineButtonAction.Interact)} INTERACT  |  " +
+                $"{Button(MineButtonAction.Interact)} INTERACT / PARACHUTE  |  " +
                 $"{Button(MineButtonAction.Potion)} POTION  |  " +
                 $"{Button(MineButtonAction.Pause)} PAUSE  |  " +
                 $"{Button(MineButtonAction.Home)} SHOP  |  REMAP: OVERVIEW > CONTROLS\n" +
-                "KEYBOARD: ARROWS / A-D MOVE  |  SHIFT RUN + SPACE JUMP  |  UP / W INTERACT  |  " +
+                "KEYBOARD: ARROWS / A-D MOVE  |  SHIFT RUN + SPACE JUMP  |  UP / W INTERACT / PARACHUTE  |  " +
                 "H POTION  |  ESC PAUSE  |  BACKSPACE SHOP";
         }
 

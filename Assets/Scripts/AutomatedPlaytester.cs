@@ -45,6 +45,7 @@ public sealed class AutomatedPlaytester : MonoBehaviour
     private bool airborneSinceLastWaypoint;
     private bool startSettled;
     private int passAfterWaypoints;
+    private int startAfterWaypoint;
     private string expectedExitSceneName;
     private float failureHeight = FailureHeight;
     private int startingUnlockedLevel;
@@ -87,6 +88,7 @@ public sealed class AutomatedPlaytester : MonoBehaviour
         returnHomeMode = Array.IndexOf(Environment.GetCommandLineArgs(), "-playtestReturnHome") >= 0;
         traceFirstJump = Array.IndexOf(Environment.GetCommandLineArgs(), "-playtestTraceFirstJump") >= 0;
         passAfterWaypoints = ReadIntArgument("-playtestPassAfterWaypoints", 0);
+        startAfterWaypoint = ReadIntArgument("-playtestStartAfterWaypoint", 0);
         startingUnlockedLevel = GameProgress.HighestUnlockedLevel;
         startingCrystals = GameProgress.Crystals;
         startingLives = GameProgress.Lives;
@@ -343,8 +345,8 @@ public sealed class AutomatedPlaytester : MonoBehaviour
 
         bool parachuteHeld = approachingAirbornePass && !hero.IsGrounded &&
             waypoints[waypointIndex].DeployParachute;
-        hero.SetAutomatedInput(horizontal, parachuteHeld || Time.unscaledTime < jumpReleaseAt,
-            usePowerRun && Mathf.Abs(horizontal) >= .5f);
+        hero.SetAutomatedInput(horizontal, Time.unscaledTime < jumpReleaseAt,
+            usePowerRun && Mathf.Abs(horizontal) >= .5f, parachuteHeld);
     }
 
     private bool IsReadyForRouteJump(Transform target, float horizontalDistance)
@@ -395,6 +397,33 @@ public sealed class AutomatedPlaytester : MonoBehaviour
             .OrderBy(waypoint => waypoint.Order));
         if (waypoints.Count > 0)
             failureHeight = Mathf.Min(FailureHeight, waypoints.Min(waypoint => waypoint.transform.position.y) - 15f);
+
+        if (startAfterWaypoint > 0)
+        {
+            int startIndex = waypoints.FindIndex(waypoint => waypoint.Order == startAfterWaypoint);
+            if (startIndex < 0)
+            {
+                Finish(false, $"The requested starting waypoint {startAfterWaypoint} does not exist.", false);
+                return;
+            }
+
+            AutomatedPlaytestWaypoint startWaypoint = waypoints[startIndex];
+            Rigidbody2D body = hero.GetComponent<Rigidbody2D>();
+            hero.transform.position = startWaypoint.transform.position;
+            if (body != null)
+            {
+                body.position = startWaypoint.transform.position;
+                body.linearVelocity = Vector2.zero;
+                body.angularVelocity = 0f;
+            }
+            Physics2D.SyncTransforms();
+            waypointIndex = startIndex + 1;
+            lastMovingPosition = hero.transform.position;
+            lastPlayerPosition = hero.transform.position;
+            lastMovedAt = Time.unscaledTime;
+            Debug.Log($"AUTOMATED PLAYTEST: starting after route waypoint {startAfterWaypoint} at " +
+                      $"{hero.transform.position} for a focused regression.");
+        }
 
         List<GameObject> collectibles = FindCollectibles();
         initialCollectibleCount = collectibles.Count;

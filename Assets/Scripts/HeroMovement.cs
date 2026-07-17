@@ -36,6 +36,7 @@ public class HeroMovement : MonoBehaviour
     private float automatedHorizontalInput;
     private bool automatedJumpHeld;
     private bool automatedRunHeld;
+    private bool automatedParachuteHeld;
     private bool previousAutomatedJumpHeld;
     private int blueCrystalCount;
     private int blackBigCrystalCount;
@@ -46,6 +47,7 @@ public class HeroMovement : MonoBehaviour
     public bool IsPreparingJump => isPreparingJump;
     public bool IsRunning => runInputHeld && Mathf.Abs(horizontalInput) >= .5f;
     public bool IsPowerJumping { get; private set; }
+    public bool IsJumpSuppressed => jumpSuppressed;
     public float JumpAnticipationSeconds => jumpAnticipationSeconds;
     public float WalkSpeed => speed;
     public float RunSpeed => runSpeed;
@@ -54,6 +56,7 @@ public class HeroMovement : MonoBehaviour
     public float JumpHoldSeconds => jumpTime;
     public float PowerJumpHoldSeconds => powerJumpTime;
     public bool JumpInputHeld { get; private set; }
+    public bool ParachuteInputHeld { get; private set; }
     public int BlueCrystalCount => blueCrystalCount;
     public int BlackBigCrystalCount => blackBigCrystalCount;
 
@@ -72,6 +75,7 @@ public class HeroMovement : MonoBehaviour
             horizontalInput = 0f;
             runInputHeld = false;
             JumpInputHeld = false;
+            ParachuteInputHeld = false;
             isJumping = false;
             animator.SetFloat("Speed", 0f);
             return;
@@ -83,14 +87,17 @@ public class HeroMovement : MonoBehaviour
             horizontalInput = 0f;
             runInputHeld = false;
             JumpInputHeld = pausedJumpHeld;
+            ParachuteInputHeld = false;
             if (!pausedJumpHeld) isJumping = false;
             if (automatedControlEnabled) previousAutomatedJumpHeld = automatedJumpHeld;
             animator.SetFloat("Speed", 0f);
             return;
         }
-        ReadInput(out bool jumpPressed, out bool jumpHeld, out bool jumpReleased, out bool runHeld);
+        ReadInput(out bool jumpPressed, out bool jumpHeld, out bool jumpReleased,
+            out bool runHeld, out bool parachuteHeld);
         runInputHeld = runHeld;
         JumpInputHeld = jumpHeld;
+        ParachuteInputHeld = parachuteHeld;
 
         if (horizontalInput < 0f)
         {
@@ -206,25 +213,31 @@ public class HeroMovement : MonoBehaviour
         automatedHorizontalInput = 0f;
         automatedJumpHeld = false;
         automatedRunHeld = false;
+        automatedParachuteHeld = false;
         previousAutomatedJumpHeld = false;
         JumpInputHeld = false;
+        ParachuteInputHeld = false;
         CancelJumpState();
     }
 
-    public void SetAutomatedInput(float horizontal, bool jumpHeld, bool runHeld = false)
+    public void SetAutomatedInput(float horizontal, bool jumpHeld, bool runHeld = false,
+        bool parachuteHeld = false)
     {
         automatedHorizontalInput = Mathf.Clamp(horizontal, -1f, 1f);
         automatedJumpHeld = jumpHeld;
         automatedRunHeld = runHeld;
+        automatedParachuteHeld = parachuteHeld;
     }
 
-    private void ReadInput(out bool jumpPressed, out bool jumpHeld, out bool jumpReleased, out bool runHeld)
+    private void ReadInput(out bool jumpPressed, out bool jumpHeld, out bool jumpReleased,
+        out bool runHeld, out bool parachuteHeld)
     {
         if (automatedControlEnabled)
         {
             horizontalInput = automatedHorizontalInput;
             jumpHeld = automatedJumpHeld;
             runHeld = automatedRunHeld;
+            parachuteHeld = automatedParachuteHeld;
             jumpPressed = automatedJumpHeld && !previousAutomatedJumpHeld;
             jumpReleased = !automatedJumpHeld && previousAutomatedJumpHeld;
             previousAutomatedJumpHeld = automatedJumpHeld;
@@ -236,6 +249,7 @@ public class HeroMovement : MonoBehaviour
         jumpPressed = MineInput.JumpPressed;
         jumpHeld = MineInput.JumpHeld;
         jumpReleased = MineInput.JumpReleased;
+        parachuteHeld = MineInput.ParachuteHeld;
     }
 
     private void OnTriggerEnter2D(Collider2D other)

@@ -18,6 +18,7 @@ public static class MineLevelValidator
     private const string PlatformArt = "Assets/Art/Generated/MineRockBronzePlatform.png";
     private const string MinerArt = "Assets/Art/Generated/MinerCharacterV2.png";
     private const string MinerAnimationArt = "Assets/Art/Generated/MinerAnimationSheet.png";
+    private const string BackdropArt = "Assets/Art/Generated/MineLevel1BronzeBackdrop.png";
     private const string DiagonalBackdropArt = "Assets/Art/Generated/MineDiagonalBronzeBackdrop.png";
     private const string ClosedChestArt = "Assets/Art/Generated/BronzeRewardChest.png";
     private const string OpenChestArt = "Assets/Art/Generated/BronzeRewardChestOpen.png";
@@ -122,6 +123,9 @@ public static class MineLevelValidator
                     StringComparison.OrdinalIgnoreCase),
                 $"Default {expected.Key} controller path must remain {expected.Value}.");
         }
+        Require(MineInput.GetActionName(MineButtonAction.Jump) == "JUMP" &&
+                MineInput.GetActionName(MineButtonAction.Interact) == "INTERACT / PARACHUTE",
+            "Parachute must share contextual Interact/Up/W input while Jump remains independent.");
 
         InputActionAsset mappingAsset = Resources.Load<InputActionAsset>("MineControllerActions");
         Require(mappingAsset != null, "The persistent controller mapping action asset is missing from Resources.");
@@ -431,8 +435,11 @@ public static class MineLevelValidator
                 transform.name.IndexOf("pick", StringComparison.OrdinalIgnoreCase) >= 0),
             $"{level.SceneName} still contains a pick or pick-hand rig after pickaxe removal.");
         ParachuteDescentController parachute = hero.GetComponent<ParachuteDescentController>();
-        Require(parachute != null && renderers.Any(renderer =>
-                renderer.name.IndexOf("parachute", StringComparison.OrdinalIgnoreCase) >= 0 && !renderer.enabled),
+        SpriteRenderer parachuteRenderer = renderers.FirstOrDefault(renderer =>
+            renderer.name.IndexOf("parachute", StringComparison.OrdinalIgnoreCase) >= 0);
+        Require(parachute != null && parachuteRenderer != null && !parachuteRenderer.enabled &&
+                parachuteRenderer.transform.localScale.x >= 1f &&
+                parachuteRenderer.transform.localPosition.y <= 1.2f,
             $"{level.SceneName} hero needs the hidden reusable Level 12 parachute visual.");
         Require(!hero.GetComponentsInChildren<Transform>(true).Any(transform =>
                 transform != hero.transform && (transform.name.IndexOf("hat", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -956,8 +963,20 @@ public static class MineLevelValidator
     private static float ValidateLevel12MixedRoute(LevelExpectation level)
     {
         Require(level.Number == 12, "Mixed-route validation is reserved for Level 12.");
-        Require(SceneComponents<MixedRouteCameraFollow>().Length == 1,
-            "Level 12 needs one velocity-aware mixed-route camera with downward parachute look-ahead.");
+        MixedRouteCameraFollow[] cameraFollowers = SceneComponents<MixedRouteCameraFollow>();
+        Require(cameraFollowers.Length == 1,
+            "Level 12 needs one descent-aware mixed-route camera with stable parachute framing.");
+        MixedRouteCameraFollow cameraFollow = cameraFollowers[0];
+        HeroMovement levelHero = SceneComponents<HeroMovement>().Single();
+        Camera gameplayCamera = cameraFollow.GetComponent<Camera>();
+        Vector2 expectedCameraStart = (Vector2)levelHero.transform.position + new Vector2(
+            SerializedFloat(cameraFollow, "horizontalLookAhead"),
+            SerializedFloat(cameraFollow, "upwardLookAhead"));
+        Require(gameplayCamera != null &&
+                Vector2.Distance(gameplayCamera.transform.position, expectedCameraStart) <= .15f,
+            "Level 12 camera must begin at the miner instead of the final route endpoint.");
+        Require(cameraFollow.VerticalDeadZone >= 1f && cameraFollow.DownwardLookAhead <= 2.25f,
+            "Level 12 camera needs a stable vertical dead zone and canopy-visible descent framing.");
 
         MineRouteSection[] sections = SceneComponents<MineRouteSection>()
             .OrderBy(section => section.Order).ToArray();
@@ -988,6 +1007,47 @@ public static class MineLevelValidator
         Require(zones.Length == 3 && zones.All(zone => zone.MinimumDepth >= 24f),
             "Level 12 must have one deep parachute zone for each downward section.");
 
+        Physics2D.SyncTransforms();
+        Collider2D heroBody = levelHero.GetComponentsInChildren<Collider2D>(true)
+            .First(collider => !collider.isTrigger);
+        float standingClearance = heroBody.bounds.size.y + .5f;
+        foreach (MineRouteSection descent in descents)
+        {
+            ParachuteDescentZone zone = descent.GetComponentInChildren<ParachuteDescentZone>(true);
+            BoxCollider2D trigger = zone == null ? null : zone.GetComponent<BoxCollider2D>();
+            BoxCollider2D landing = descent.GetComponentsInChildren<BoxCollider2D>(true).Single(collider =>
+                collider.name.IndexOf("Parachute Landing Shelf", StringComparison.OrdinalIgnoreCase) >= 0);
+            Require(trigger != null && trigger.bounds.min.y >= landing.bounds.max.y + standingClearance,
+                $"Level 12 descent {descent.Order} chute trigger overlaps its landing stance.");
+
+            int routeIndex = Array.IndexOf(sections, descent);
+            if (routeIndex >= sections.Length - 1) continue;
+            MineRouteSection following = sections[routeIndex + 1];
+            BoxCollider2D[] outgoing = following.GetComponentsInChildren<BoxCollider2D>(true)
+                .Where(collider => !collider.isTrigger &&
+                    collider.name.IndexOf("Mixed", StringComparison.OrdinalIgnoreCase) >= 0)
+                .OrderBy(collider => Vector2.Distance(collider.bounds.center, following.Entry))
+                .ToArray();
+            Require(outgoing.Length >= 2,
+                $"Level 12 descent {descent.Order} needs two readable outgoing ledges.");
+            Require(trigger.bounds.min.y >= outgoing[0].bounds.max.y + standingClearance,
+                $"Level 12 descent {descent.Order} chute trigger reaches the first outgoing ledge.");
+            Require(outgoing[0].bounds.min.x >= landing.bounds.max.x - .15f &&
+                    outgoing[0].bounds.min.x <= landing.bounds.max.x + 1f,
+                $"Level 12 descent {descent.Order} first outgoing ledge must clear the miner's head " +
+                "without creating an excessive breakout gap.");
+
+            BoxCollider2D rightWall = descent.GetComponentsInChildren<BoxCollider2D>(true).Single(collider =>
+                collider.name.IndexOf("Descent Right Rock Wall", StringComparison.OrdinalIgnoreCase) >= 0);
+            Require(rightWall.bounds.min.y >=
+                    Mathf.Max(outgoing[0].bounds.max.y, outgoing[1].bounds.max.y) + 3.5f,
+                $"Level 12 descent {descent.Order} right wall blocks the first two outgoing ledges.");
+            DamageZone finalFixedHazard = descent.GetComponentsInChildren<DamageZone>(true).Single(zoneDamage =>
+                zoneDamage.name.EndsWith("-04", StringComparison.OrdinalIgnoreCase));
+            Require(finalFixedHazard.transform.position.x < descent.Entry.x,
+                $"Level 12 descent {descent.Order} final fixed spike blocks its lower-right exit.");
+        }
+
         ProximityHiddenHazard[] hidden = SceneComponents<ProximityHiddenHazard>();
         Require(hidden.Length >= 12 && hidden.All(hazard =>
                 hazard.RevealDistance >= 9f && hazard.WarningSeconds >= .5f &&
@@ -1017,6 +1077,23 @@ public static class MineLevelValidator
                 NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(DiagonalBackdropArt) &&
                 Mathf.Abs(SignedZ(renderer.transform.eulerAngles.z)) <= 1f),
             "All Level 12 angled sections must use the dedicated unrotated diagonal mine artwork.");
+
+        SpriteRenderer[] descentBackdrops = SceneComponents<SpriteRenderer>().Where(renderer =>
+            renderer.name.IndexOf("Dedicated Descent Shaft Backdrop", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
+        Require(descentBackdrops.Length == 3 && descentBackdrops.All(renderer =>
+                renderer.sortingOrder == -90 && renderer.sprite != null &&
+                NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(BackdropArt) &&
+                renderer.color.b > renderer.color.r),
+            "Level 12 descents need three cool-dark dedicated shaft backdrops above adjacent section art.");
+
+        BoxCollider2D[] visibleWalls = SceneComponents<BoxCollider2D>().Where(collider =>
+            collider.name.IndexOf("Descent", StringComparison.OrdinalIgnoreCase) >= 0 &&
+            collider.name.IndexOf("Rock Wall", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
+        Require(visibleWalls.Length == 6 && visibleWalls.All(wall =>
+                wall.GetComponentsInChildren<SpriteRenderer>(true).Any(renderer =>
+                    renderer.sprite != null && renderer.sortingOrder == 1 &&
+                    NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(PlatformArt))),
+            "Every Level 12 shaft collider needs a matching bronze-veined rock wall visual.");
 
         Require(SceneComponents<GreenCrystalCollectible>().Count(gem => gem.Value == 1) >= 20,
             "The long Level 12 route needs regular green-crystal rewards.");

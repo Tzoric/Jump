@@ -15,7 +15,7 @@ public sealed class ParachuteDescentZone : MonoBehaviour
 
     private void OnTriggerEnter2D(Collider2D other)
     {
-        other.GetComponentInParent<ParachuteDescentController>()?.EnterDescentZone();
+        other.GetComponentInParent<ParachuteDescentController>()?.EnterDescentZone(transform.position.x);
     }
 
     private void OnTriggerExit2D(Collider2D other)

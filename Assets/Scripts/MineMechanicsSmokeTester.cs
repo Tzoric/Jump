@@ -31,13 +31,14 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         MineRunInventory inventory = FindFirstObjectByType<MineRunInventory>();
         RewardChest chest = FindFirstObjectByType<RewardChest>();
         MineLevelMenuController levelMenu = FindFirstObjectByType<MineLevelMenuController>();
+        ParachuteDescentController parachute = FindFirstObjectByType<ParachuteDescentController>();
         AutomatedPlaytestWaypoint[] waypoints =
             FindObjectsByType<AutomatedPlaytestWaypoint>(FindObjectsSortMode.None);
 
         Rigidbody2D movementBody = movement == null ? null : movement.GetComponent<Rigidbody2D>();
         bool referencesPresent = health != null && weight != null && movement != null && movementBody != null &&
             outfitVisual != null && exitDoor != null && inventory != null && chest != null && levelMenu != null &&
-            waypoints.Length == 11;
+            parachute != null && waypoints.Length == 11;
         bool damagePassed = false;
         bool damageVisualRestorationPassed = false;
         bool healingPassed = false;
@@ -50,7 +51,10 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             MineInput.GetDefaultControllerBindingPath(MineButtonAction.Interact) == "<Gamepad>/buttonWest" &&
             MineInput.GetDefaultControllerBindingPath(MineButtonAction.Potion) == "<Gamepad>/buttonNorth" &&
             MineInput.GetDefaultControllerBindingPath(MineButtonAction.Pause) == "<Gamepad>/start" &&
-            MineInput.GetDefaultControllerBindingPath(MineButtonAction.Home) == "<Gamepad>/select";
+            MineInput.GetDefaultControllerBindingPath(MineButtonAction.Home) == "<Gamepad>/select" &&
+            MineInput.GetActionName(MineButtonAction.Jump) == "JUMP" &&
+            MineInput.GetActionName(MineButtonAction.Interact) == "INTERACT / PARACHUTE";
+        bool parachuteInputSeparationPassed = false;
         bool spikeHitboxShapePassed = VerifySpikeHitboxGeometry();
         bool pauseMenuPassed = false;
         bool deathActionLockPassed = false;
@@ -251,6 +255,38 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             Destroy(wall);
             Physics2D.SyncTransforms();
 
+            Vector2 beforeParachutePosition = movementBody.position;
+            Vector2 beforeParachuteVelocity = movementBody.linearVelocity;
+            movementBody.position = new Vector2(120f, 120f);
+            movementBody.linearVelocity = Vector2.zero;
+            Physics2D.SyncTransforms();
+            movement.EnableAutomatedControl(true);
+            parachute.EnterDescentZone(120f);
+            yield return null;
+            yield return null;
+
+            movement.SetAutomatedInput(0f, true, false, false);
+            yield return null;
+            yield return null;
+            bool jumpDidNotDeploy = !parachute.IsDeployed;
+
+            movement.SetAutomatedInput(0f, false, false, true);
+            yield return null;
+            yield return null;
+            bool interactDeployed = parachute.IsDeployed && parachute.IsInDescentZone &&
+                Mathf.Approximately(parachute.DescentCenterX, 120f);
+
+            parachute.ExitDescentZone();
+            yield return null;
+            bool landingReleasedJump = !parachute.IsDeployed && !parachute.IsInDescentZone &&
+                !movement.IsJumpSuppressed;
+            parachuteInputSeparationPassed = jumpDidNotDeploy && interactDeployed && landingReleasedJump;
+            movement.SetAutomatedInput(0f, false);
+            movement.EnableAutomatedControl(false);
+            movementBody.position = beforeParachutePosition;
+            movementBody.linearVelocity = beforeParachuteVelocity;
+            Physics2D.SyncTransforms();
+
             int startingHealth = health.CurrentHealth;
             SpriteRenderer minerRenderer = outfitVisual.VisualRenderer;
             Color minerRestColor = minerRenderer == null ? Color.white : minerRenderer.color;
@@ -404,7 +440,7 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             playtestUnlockEasterEggPassed &&
             exitDoorInteractionPassed && wallContactReleasePassed && emptyHeartDisplayPassed &&
             pickRemovedPassed && chestInteractionPassed && powerRunJumpPassed && controllerBindingsPassed &&
-            pauseMenuPassed && deathActionLockPassed && spikeHitboxShapePassed;
+            parachuteInputSeparationPassed && pauseMenuPassed && deathActionLockPassed && spikeHitboxShapePassed;
         string reportPath = ReadArgument("-mechanicsReport") ??
             Path.Combine(Application.dataPath, "..", "Logs", "MineMechanicsSmokeTest.json");
         var result = new SmokeResult
@@ -418,6 +454,7 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             jumpAnticipationPassed = jumpAnticipationPassed,
             powerRunJumpPassed = powerRunJumpPassed,
             controllerBindingsPassed = controllerBindingsPassed,
+            parachuteInputSeparationPassed = parachuteInputSeparationPassed,
             spikeHitboxShapePassed = spikeHitboxShapePassed,
             pauseMenuPassed = pauseMenuPassed,
             deathActionLockPassed = deathActionLockPassed,
@@ -651,6 +688,7 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         public bool jumpAnticipationPassed;
         public bool powerRunJumpPassed;
         public bool controllerBindingsPassed;
+        public bool parachuteInputSeparationPassed;
         public bool spikeHitboxShapePassed;
         public bool pauseMenuPassed;
         public bool deathActionLockPassed;

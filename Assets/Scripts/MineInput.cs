@@ -162,6 +162,13 @@ public static class MineInput
         Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W) ||
         ReadAction(MineButtonAction.Interact).WasPressedThisFrame();
 
+    // Parachute deployment deliberately shares the contextual Interact control,
+    // not Jump. Up/W and the mapped controller Interact button therefore open
+    // the canopy in a descent while Space/B remains available for the landing.
+    public static bool ParachuteHeld =>
+        Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.W) ||
+        ReadAction(MineButtonAction.Interact).IsPressed();
+
     public static bool PotionPressed =>
         Input.GetKeyDown(KeyCode.H) || ReadAction(MineButtonAction.Potion).WasPressedThisFrame();
 
@@ -184,8 +191,8 @@ public static class MineInput
     public static string GetActionName(MineButtonAction action) => action switch
     {
         MineButtonAction.Run => "RUN",
-        MineButtonAction.Jump => "JUMP / PARACHUTE",
-        MineButtonAction.Interact => "INTERACT",
+        MineButtonAction.Jump => "JUMP",
+        MineButtonAction.Interact => "INTERACT / PARACHUTE",
         MineButtonAction.Potion => "HEALTH POTION",
         MineButtonAction.Pause => "PAUSE",
         MineButtonAction.Home => "RETURN TO SHOP",

@@ -13,10 +13,13 @@ public sealed class ParachuteDescentController : MonoBehaviour
     private HeroMovement movement;
     private float normalGravity;
     private int activeZoneCount;
+    private bool cameraTrackingDescent;
 
     public bool IsInDescentZone => activeZoneCount > 0;
+    public bool IsCameraTrackingDescent => cameraTrackingDescent;
     public bool IsDeployed { get; private set; }
     public float DeployedTerminalSpeed => deployedTerminalSpeed;
+    public float DescentCenterX { get; private set; }
 
     public void Configure(SpriteRenderer canopy, float slowGravity = 1f,
         float slowTerminalSpeed = 4.25f, float fastTerminalSpeed = 12f)
@@ -38,7 +41,11 @@ public sealed class ParachuteDescentController : MonoBehaviour
 
     private void Update()
     {
-        bool shouldDeploy = IsInDescentZone && !movement.IsGrounded && movement.JumpInputHeld;
+        if (cameraTrackingDescent && !IsInDescentZone && movement.IsGrounded)
+            cameraTrackingDescent = false;
+
+        bool shouldDeploy = IsInDescentZone && !movement.IsGrounded &&
+                            movement.ParachuteInputHeld;
         SetDeployed(shouldDeploy);
     }
 
@@ -59,9 +66,11 @@ public sealed class ParachuteDescentController : MonoBehaviour
         canopyRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, tilt);
     }
 
-    public void EnterDescentZone()
+    public void EnterDescentZone(float shaftCenterX)
     {
         activeZoneCount++;
+        DescentCenterX = shaftCenterX;
+        cameraTrackingDescent = true;
         movement.SetJumpSuppressed(true);
     }
 
@@ -78,6 +87,7 @@ public sealed class ParachuteDescentController : MonoBehaviour
     public void ResetDescentState()
     {
         activeZoneCount = 0;
+        cameraTrackingDescent = false;
         if (movement != null) movement.SetJumpSuppressed(false);
         SetDeployed(false);
     }

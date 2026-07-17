@@ -235,8 +235,8 @@ public static class MineLevelBuilder
                 new Vector3(0f, .02f, -.01f), 10);
             miner.localScale = Vector3.one * .95f;
             Transform parachute = CreateAccessory(root.transform, "Level 12 Parachute Canopy", parachuteSprite,
-                new Vector3(0f, 1.28f, -.025f), 9);
-            parachute.localScale = Vector3.one * .82f;
+                new Vector3(0f, 1.15f, -.025f), 9);
+            parachute.localScale = Vector3.one * 1.08f;
             SpriteRenderer parachuteRenderer = parachute.GetComponent<SpriteRenderer>();
             parachuteRenderer.enabled = false;
             (root.GetComponent<ParachuteDescentController>() ?? root.AddComponent<ParachuteDescentController>())
@@ -377,7 +377,8 @@ public static class MineLevelBuilder
                     break;
                 case MineRouteSectionType.AngledUp:
                     cursor = BuildLevel12AngledUp(section, art, cursor, ref waypointOrder, routePoints,
-                        index, out pathLength);
+                        index, index > 0 && sectionOrder[index - 1] == MineRouteSectionType.VerticalDown,
+                        out pathLength);
                     break;
                 case MineRouteSectionType.Horizontal:
                     cursor = BuildLevel12Horizontal(section, root, art, cursor, ref waypointOrder,
@@ -407,12 +408,15 @@ public static class MineLevelBuilder
         float maxX = routePoints.Max(point => point.x) + 4f;
         float minY = routePoints.Min(point => point.y) - 4f;
         float maxY = routePoints.Max(point => point.y) + 4f;
-        Camera camera = CreateCameraBase(new Vector3(cursor.x, cursor.y, -10f));
+        // Begin at the miner rather than the final route endpoint. MixedRouteCameraFollow
+        // also snaps on Start so hand-authored variants cannot sweep across the map.
+        Camera camera = CreateCameraBase(new Vector3(
+            hero.transform.position.x + 1.8f, hero.transform.position.y + 1.2f, -10f));
         camera.gameObject.AddComponent<MixedRouteCameraFollow>().Configure(hero.transform,
             new Vector2(minX, minY), new Vector2(maxX, maxY));
 
         CreateHud(hero, level,
-            "MIXED DEEPWORKS GAUNTLET     HOLD JUMP TO OPEN THE PARACHUTE IN DESCENTS     DODGE REVEALED HAZARDS");
+            "MIXED DEEPWORKS GAUNTLET     HOLD UP / W OR INTERACT FOR PARACHUTE     JUMP STAYS AVAILABLE AT LANDINGS");
         EditorSceneManager.SaveScene(scene, level.Path);
     }
 
@@ -468,16 +472,26 @@ public static class MineLevelBuilder
     }
 
     private static Vector2 BuildLevel12AngledUp(Transform section, ArtSet art, Vector2 entry,
-        ref int waypointOrder, ICollection<Vector2> routePoints, int sectionIndex, out float pathLength)
+        ref int waypointOrder, ICollection<Vector2> routePoints, int sectionIndex,
+        bool followsDescent, out float pathLength)
     {
         Vector2 previous = entry;
         pathLength = 0f;
+        // A diagonal ledge beginning directly above the wide landing shelf forms a low
+        // ceiling: the miner hits its underside before gaining enough height. Move the
+        // entire outgoing run just beyond the shelf edge after a descent, preserving the
+        // same slope and jump spacing while leaving an unmistakable lower-right breakout.
+        float breakoutOffset = followsDescent ? 1.9f : 0f;
         for (int step = 0; step < 7; step++)
         {
-            Vector2 position = entry + new Vector2((step + 1) * 6.1f, (step + 1) * 2.7f);
+            Vector2 position = entry + new Vector2((step + 1) * 6.1f + breakoutOffset,
+                (step + 1) * 2.7f);
             CreatePlatform(section, art.Platform, $"Mixed Diagonal Ledge {sectionIndex + 1:00}-{step + 1:00}",
                 position, 4.5f - step * .08f, 18f);
-            CreateWaypoint(section, position + Vector2.up * 1.55f, ++waypointOrder);
+            // The rotated platform's physical standing center is slightly lower than the
+            // old marker. Keep the route marker inside the settled-ground tolerance so a
+            // focused traversal recognizes the landing instead of jumping in place.
+            CreateWaypoint(section, position + Vector2.up * 1.4f, ++waypointOrder);
             if (step > 1 && step % 2 == 1)
                 CreateSpike(section, art.Spike, position + new Vector2(1f, .9f), 18f);
             if (step % 2 == 0) CreateGem(section, art.GreenGem, position + Vector2.up * 2.1f, 1);
@@ -530,23 +544,30 @@ public static class MineLevelBuilder
 
         GameObject zone = new($"Parachute Descent Zone {sectionIndex + 1:00}");
         zone.transform.SetParent(section);
-        zone.transform.position = entry + Vector2.down * 14f;
+        // End the chute trigger above both the landing stance and the first
+        // outgoing ledge so Jump is restored before the next section begins.
+        zone.transform.position = entry + Vector2.down * 11.5f;
         BoxCollider2D zoneCollider = zone.AddComponent<BoxCollider2D>();
         zoneCollider.isTrigger = true;
-        zoneCollider.size = new Vector2(18f, 27f);
+        zoneCollider.size = new Vector2(18f, 24f);
         zone.AddComponent<ParachuteDescentZone>().Configure(depth);
 
-        CreateBoundary(section, $"Descent Left Wall {sectionIndex + 1:00}",
-            entry + new Vector2(-9.5f, -15f), new Vector2(1f, 32f));
-        CreateBoundary(section, $"Descent Right Wall {sectionIndex + 1:00}",
-            entry + new Vector2(9.5f, -15f), new Vector2(1f, 32f));
+        bool needsRightExit = sectionIndex < 11;
+        CreateVisibleShaftWall(section, art.Platform, $"Descent Left Rock Wall {sectionIndex + 1:00}",
+            entry + new Vector2(-9.5f, -15f), 32f);
+        CreateVisibleShaftWall(section, art.Platform, $"Descent Right Rock Wall {sectionIndex + 1:00}",
+            needsRightExit ? entry + new Vector2(9.5f, -9f) : entry + new Vector2(9.5f, -15f),
+            needsRightExit ? 20f : 32f);
 
         float[] hazardDepths = { 6f, 11.5f, 17f, 22.5f };
         for (int hazardIndex = 0; hazardIndex < hazardDepths.Length; hazardIndex++)
         {
             // The first hazard is always on the left, directing the player off the open
             // right edge of the launch shelf and away from the preceding section's pit.
-            bool left = hazardIndex % 2 == 0;
+            // The last hazard in a transition shaft moves to the solid left
+            // wall, leaving the lower-right breakout visually and physically clear.
+            bool left = hazardIndex % 2 == 0 ||
+                        (needsRightExit && hazardIndex == hazardDepths.Length - 1);
             Vector2 hazardPosition = entry + new Vector2(left ? -7.8f : 7.8f, -hazardDepths[hazardIndex]);
             CreateHiddenDescentSpike(section, art.Spike,
                 $"Hidden Descent Spike {sectionIndex + 1:00}-{hazardIndex + 1:00}", hazardPosition,
@@ -578,8 +599,16 @@ public static class MineLevelBuilder
         Vector2 span = new(Mathf.Abs(exit.x - entry.x) + 22f, Mathf.Abs(exit.y - entry.y) + 18f);
         Sprite sprite = type == MineRouteSectionType.AngledUp ? art.DiagonalBackdrop : art.Backdrop;
         Vector2 nativeSize = type == MineRouteSectionType.AngledUp ? new Vector2(48f, 32f) : new Vector2(32f, 48f);
-        CreateBackdrop(parent, sprite, $"Section {order:00} {type} Backdrop", new Vector3(center.x, center.y, 5f),
-            new Vector2(Mathf.Max(.8f, span.x / nativeSize.x), Mathf.Max(.8f, span.y / nativeSize.y)));
+        bool descent = type == MineRouteSectionType.VerticalDown;
+        SpriteRenderer renderer = CreateBackdrop(parent, sprite,
+            descent
+                ? $"Section {order:00} Dedicated Descent Shaft Backdrop"
+                : $"Section {order:00} {type} Backdrop",
+            new Vector3(center.x, center.y, 5f),
+            new Vector2(Mathf.Max(.8f, span.x / nativeSize.x), Mathf.Max(.8f, span.y / nativeSize.y)),
+            0f, descent ? -90 : -100);
+        if (descent)
+            renderer.color = new Color32(105, 122, 145, 255);
     }
 
     private static void BuildGeneratedLevel(LevelSpec level, GameObject prefab, ArtSet art)
@@ -717,10 +746,11 @@ public static class MineLevelBuilder
         CreateGlobalMineLight(parent);
     }
 
-    private static void CreateBackdrop(Transform parent,Sprite sprite,string name,Vector3 position,Vector2 scale,float angle=0f)
+    private static SpriteRenderer CreateBackdrop(Transform parent,Sprite sprite,string name,Vector3 position,
+        Vector2 scale,float angle=0f,int sortingOrder=-100)
     {
         GameObject backdrop=new(name); backdrop.transform.SetParent(parent); backdrop.transform.position=position; backdrop.transform.rotation=Quaternion.Euler(0,0,angle); backdrop.transform.localScale=new Vector3(scale.x,scale.y,1);
-        SpriteRenderer renderer=backdrop.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=-100;
+        SpriteRenderer renderer=backdrop.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=sortingOrder; return renderer;
     }
 
     private static void CreateGlobalMineLight(Transform parent)
@@ -862,6 +892,28 @@ public static class MineLevelBuilder
     {
         CreateBoundary(parent,"Left Mine Wall",center+Vector2.left*width*.5f,new Vector2(1,height)); CreateBoundary(parent,"Right Mine Wall",center+Vector2.right*width*.5f,new Vector2(1,height)); GameObject pit=new(bottomless?"Bottomless Abyss Death Zone":"Respawn Pit"); pit.transform.SetParent(parent); pit.transform.position=new Vector3(center.x,-11,0); BoxCollider2D trigger=pit.AddComponent<BoxCollider2D>(); trigger.isTrigger=true; trigger.size=new Vector2(width,5); pit.AddComponent<DamageZone>().Configure(99);
     }
+
+    private static void CreateVisibleShaftWall(Transform parent, Sprite rockSprite, string name,
+        Vector2 position, float height)
+    {
+        GameObject wall = new(name);
+        wall.transform.SetParent(parent);
+        wall.transform.position = position;
+        wall.layer = LayerMask.NameToLayer("Ground");
+        wall.AddComponent<BoxCollider2D>().size = new Vector2(1f, height);
+
+        GameObject face = new(name + " Bronze Vein Face");
+        face.transform.SetParent(wall.transform, false);
+        face.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+        // MineRockBronzePlatform is 6x2 world units at import size. Rotating and
+        // scaling it this way makes a one-unit-wide illustrated wall that matches
+        // the physical collider and the established bronze-veined rock style.
+        face.transform.localScale = new Vector3(height / 6f, .5f, 1f);
+        SpriteRenderer renderer = face.AddComponent<SpriteRenderer>();
+        renderer.sprite = rockSprite;
+        renderer.sortingOrder = 1;
+    }
+
     private static void CreateBoundary(Transform parent,string name,Vector2 position,Vector2 size) { GameObject go=new(name); go.transform.SetParent(parent); go.transform.position=position; go.layer=LayerMask.NameToLayer("Ground"); go.AddComponent<BoxCollider2D>().size=size; }
 
     private static void CreateHud(GameObject hero,LevelSpec level,string instruction)
@@ -964,8 +1016,8 @@ public static class MineLevelBuilder
 
         MineControlsController mappings=controls.AddComponent<MineControlsController>();
         Button run=CreateActionButton(controls.transform,"Map Run Button","RUN",new Vector2(-270,95),mappings.RebindRun);
-        Button jump=CreateActionButton(controls.transform,"Map Jump Button","JUMP / PARACHUTE",new Vector2(270,95),mappings.RebindJump);
-        Button interact=CreateActionButton(controls.transform,"Map Interact Button","INTERACT",new Vector2(-270,15),mappings.RebindInteract);
+        Button jump=CreateActionButton(controls.transform,"Map Jump Button","JUMP",new Vector2(270,95),mappings.RebindJump);
+        Button interact=CreateActionButton(controls.transform,"Map Interact Button","INTERACT / PARACHUTE",new Vector2(-270,15),mappings.RebindInteract);
         Button potion=CreateActionButton(controls.transform,"Map Potion Button","HEALTH POTION",new Vector2(270,15),mappings.RebindPotion);
         Button pauseButton=CreateActionButton(controls.transform,"Map Pause Button","PAUSE",new Vector2(-270,-65),mappings.RebindPause);
         Button home=CreateActionButton(controls.transform,"Map Home Button","RETURN TO SHOP",new Vector2(270,-65),mappings.RebindHome);
