@@ -221,6 +221,18 @@ public static class MineLevelValidator
                 shop.ShopPanel != shop.ControlsPanel && shop.LevelPanel.activeSelf &&
                 !shop.ShopPanel.activeSelf && !shop.ControlsPanel.activeSelf,
             "Overview must serialize with only the distinct Levels page visible.");
+        Vector2Int[] expectedPlaytestSequence =
+        {
+            Vector2Int.up, Vector2Int.up, Vector2Int.down, Vector2Int.down,
+            Vector2Int.left, Vector2Int.right, Vector2Int.left, Vector2Int.right,
+            Vector2Int.down, Vector2Int.up
+        };
+        Require(MineShopController.PlaytestKeyboardCode == "MINER" &&
+                MineShopController.PlaytestControllerSequenceLength == expectedPlaytestSequence.Length &&
+                expectedPlaytestSequence.Select((step, index) =>
+                    MineShopController.GetPlaytestControllerSequenceStep(index) == step).All(matches => matches) &&
+                shop.BalanceDisplay != null,
+            "Overview needs the hidden MINER / direction-sequence Foreman's Master Key and a visible active-status display.");
 
         MineControlsController[] mappings = SceneComponents<MineControlsController>();
         Require(mappings.Length == 1 && mappings[0].gameObject == shop.ControlsPanel,
@@ -307,6 +319,8 @@ public static class MineLevelValidator
     {
         OpenScene(level.Path);
         ValidateSceneCamera(level);
+        Require(SceneComponents<MineShopController>().Length == 0,
+            $"{level.SceneName} must not listen for the overview-only playtest easter egg.");
 
         HeroMovement[] heroes = SceneComponents<HeroMovement>();
         Require(heroes.Length == 1, $"{level.SceneName} must contain exactly one hero.");

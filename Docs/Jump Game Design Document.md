@@ -3,7 +3,7 @@
 ## Game Design Document
 
 **Status:** First dungeon production design
-**Version:** 0.7a
+**Version:** 0.7b
 **Last updated:** July 16, 2026
 **Working title:** Jump
 
@@ -68,6 +68,8 @@ During an active level, the player may press the mapped Return-to-Shop button (d
 | Open inventory | `E` | Reserved for the broader inventory interface. |
 
 The overview has three pages: Levels, Shop, and Controls. The Controls page can remap Run, Jump/Parachute, Interact, Health Potion, Pause, and Return to Shop. It displays the active controller and current assignments, waits for the button used to select a row to be released, captures the next controller button, saves a versioned profile per controller model, and offers **Restore Defaults** for that model. Assigning a button already used by another action swaps the two assignments so every action remains reachable. Controller movement, keyboard controls, and UI navigation/submit remain fixed; Game Over does not erase controller preferences.
+
+A hidden playtest easter egg is available only on the Levels page. Typing `MINER`, or entering `Up, Up, Down, Down, Left, Right, Left, Right, Down, Up` with neutral releases on the left stick/D-pad, toggles the **Foreman's Master Key**. While active, all twelve Bronze Mines levels are selectable and the overview shows a persistent master-key banner. The key is session-only: it neither advances the saved highest level nor grants the silver key. Entering a tunnel starts an in-memory copy of progression so gems, lives, potions, upgrades, bronze/silver keys, chests, and exits can be tested normally; returning to the overview or restarting after a test Game Over discards that copy. Entering the code again restores the normal story locks.
 
 For the pictured Logitech F310, the rear input-mode switch's **X** position is recommended. XInput provides the stable `A`/`B`/`X`/`Y`, Start, and Back defaults shown above. Other controller layouts can use the mapping screen. The game binds both the left stick and D-pad to movement; the F310 Mode button may swap those two hardware controls, but either remains a supported movement source.
 
@@ -359,6 +361,7 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 - Confirm that the slower side speed and higher jump feel controlled rather than sluggish.
 - Confirm the 9-unit run is visibly faster than the 7.5-unit walk and selects the run animation, and that a directional power jump is distinct without replacing the ordinary jump.
 - On a Logitech F310 in rear-switch X/XInput mode, complete a controller-only pass with both the left stick and D-pad; verify the defaults match the table, remap all six actions, change two assignments through conflict swapping, reload the game to confirm persistence, and restore defaults.
+- On the overview Levels page, activate the Foreman's Master Key once with `MINER` and once with the ten-direction controller sequence. Confirm all twelve named tunnels become selectable, Level 11 does not award a silver key, the active banner is unmistakable, and returning from a mutated test run leaves the real save byte-for-byte/logically unchanged.
 - Confirm the brief squat is readable without making jump input feel delayed, no standing frame flashes between squat and rise, and the squat never appears after takeoff.
 - Confirm that the thin platforms remain readable and their collision matches their artwork.
 - Brush through the transparent sides and valleys of upright, angled, wall-mounted, and scaled spikes; health must change only when the miner overlaps a visible tooth.
@@ -452,6 +455,7 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 
 | Version | Date | Change |
 |---|---|---|
+| 0.7b | July 16, 2026 | Added the hidden, session-only Foreman's Master Key for rapid level testing through `MINER` or a face-button-free controller sequence; all twelve tunnels open through a visible playtest override while an in-memory progression sandbox protects the real save. |
 | 0.7a | July 16, 2026 | Made damage flashing a single owned visual state so boundary-timed repeat hits, respawn, shutdown, and door entry always restore the miner's authored full opacity; added runtime regression coverage. |
 | 0.7 | July 16, 2026 | Replaced rectangular spike damage bounds with three inset visible-tooth polygon paths; added a third overview Controls page; made Run, Jump/Parachute, Interact, Potion, Pause, and Return-to-Shop controller buttons remappable; added per-controller-model persistence, conflict swapping, fixed keyboard/UI navigation, dynamic prompts/HUD labels, and Restore Defaults. |
 | 0.6 | July 15, 2026 | Added the complete keyboard and Logitech/XInput control layout; introduced 9-unit running and committed force-14.75 directional power jumps; assigned controller actions for interaction, potions, pause, and return to the overview Shop; documented progress-preserving mid-level return; and made Level 10 power jumps and 0.25-unit spike-landing clearance part of validation. |

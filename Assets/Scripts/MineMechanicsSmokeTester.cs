@@ -3,6 +3,7 @@ using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using TMPro;
 using UnityEngine;
 
 public sealed class MineMechanicsSmokeTester : MonoBehaviour
@@ -57,6 +58,7 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         bool exitConfiguredPassed = false;
         bool exitDoorInteractionPassed = false;
         bool gameOverProgressResetPassed = VerifyGameOverProgressReset();
+        bool playtestUnlockEasterEggPassed = VerifyPlaytestUnlockEasterEgg();
         bool wallContactReleasePassed = false;
         bool emptyHeartDisplayPassed = false;
         bool chestInteractionPassed = false;
@@ -399,6 +401,7 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         bool passed = referencesPresent && automatedJumpPassed && jumpAnticipationPassed && damagePassed &&
             damageVisualRestorationPassed &&
             healingPassed && weightPassed && exitConfiguredPassed && gameOverProgressResetPassed &&
+            playtestUnlockEasterEggPassed &&
             exitDoorInteractionPassed && wallContactReleasePassed && emptyHeartDisplayPassed &&
             pickRemovedPassed && chestInteractionPassed && powerRunJumpPassed && controllerBindingsPassed &&
             pauseMenuPassed && deathActionLockPassed && spikeHitboxShapePassed;
@@ -422,6 +425,7 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             exitDoorConfigured = exitConfiguredPassed,
             exitDoorInteractionPassed = exitDoorInteractionPassed,
             gameOverProgressResetPassed = gameOverProgressResetPassed,
+            playtestUnlockEasterEggPassed = playtestUnlockEasterEggPassed,
             wallContactReleasePassed = wallContactReleasePassed,
             emptyHeartDisplayPassed = emptyHeartDisplayPassed,
             pickRemovedPassed = pickRemovedPassed,
@@ -523,7 +527,8 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             GameProgress.HealthPotions != 0 ||
             GameProgress.MaxHearts != GameProgress.BaseHearts ||
             GameProgress.HighestUnlockedLevel != 2 ||
-            GameProgress.HasSilverKey)
+            GameProgress.HasSilverKey || GameProgress.PlaytestAccessEnabled ||
+            GameProgress.IsPlaytestRunActive)
         {
             return false;
         }
@@ -537,6 +542,101 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         }
 
         return true;
+    }
+
+    private static bool VerifyPlaytestUnlockEasterEgg()
+    {
+        GameProgress.SetPlaytestAccess(false);
+        int savedCrystals = GameProgress.Crystals;
+        int savedLives = GameProgress.Lives;
+        int savedPotions = GameProgress.HealthPotions;
+        int savedHearts = GameProgress.MaxHearts;
+        int savedHighestLevel = GameProgress.HighestUnlockedLevel;
+        bool savedSilverKey = GameProgress.HasSilverKey;
+        bool savedBronzeKey = GameProgress.HasBronzeKey(11);
+        bool savedChest = GameProgress.IsChestOpened(11);
+
+        GameObject probeObject = new("Smoke Test Foreman's Master Key");
+        probeObject.SetActive(false);
+        MineShopController probe = probeObject.AddComponent<MineShopController>();
+        GameObject balanceObject = new("Smoke Test Master Key Banner",
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+        balanceObject.transform.SetParent(probeObject.transform, false);
+        TextMeshProUGUI masterKeyBanner = balanceObject.GetComponent<TextMeshProUGUI>();
+        probe.Configure(null, null, null, masterKeyBanner, null);
+
+        GameObject levelElevenObject = new("Smoke Test Locked Level 11",
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image),
+            typeof(UnityEngine.UI.Button));
+        MineLevelSelectButton levelElevenNode = levelElevenObject.AddComponent<MineLevelSelectButton>();
+        levelElevenNode.Configure(11, "Level11_TreasureVein", "Treasure Vein", null);
+        UnityEngine.UI.Button levelElevenButton = levelElevenObject.GetComponent<UnityEngine.UI.Button>();
+        bool levelElevenInitiallyLocked = !levelElevenButton.interactable;
+
+        bool keyboardTriggered = false;
+        foreach (char character in MineShopController.PlaytestKeyboardCode)
+            keyboardTriggered |= probe.SubmitPlaytestKeyboardCharacter(character);
+        bool keyboardUnlockedEveryLevel = keyboardTriggered && GameProgress.PlaytestAccessEnabled &&
+            Enumerable.Range(1, GameProgress.MaxMineLevel).All(GameProgress.IsLevelUnlocked) &&
+            !GameProgress.IsLevelUnlocked(0) && !GameProgress.IsLevelUnlocked(13) &&
+            levelElevenInitiallyLocked && levelElevenButton.interactable &&
+            masterKeyBanner.text.Contains("MASTER KEY") &&
+            GameProgress.HighestUnlockedLevel == savedHighestLevel &&
+            GameProgress.HasSilverKey == savedSilverKey;
+
+        bool keyboardReturnedKey = false;
+        foreach (char character in MineShopController.PlaytestKeyboardCode)
+            keyboardReturnedKey |= probe.SubmitPlaytestKeyboardCharacter(character);
+        bool storyLocksRestored = keyboardReturnedKey && !GameProgress.PlaytestAccessEnabled &&
+            !GameProgress.IsLevelUnlocked(11) && !GameProgress.IsLevelUnlocked(12) &&
+            !levelElevenButton.interactable && masterKeyBanner.text.Contains("RETURNED");
+
+        bool controllerTriggered = false;
+        for (int index = 0; index < MineShopController.PlaytestControllerSequenceLength; index++)
+            controllerTriggered |= probe.SubmitPlaytestControllerDirection(
+                MineShopController.GetPlaytestControllerSequenceStep(index));
+        bool controllerUnlockedEveryLevel = controllerTriggered && GameProgress.PlaytestAccessEnabled &&
+            Enumerable.Range(1, GameProgress.MaxMineLevel).All(GameProgress.IsLevelUnlocked) &&
+            levelElevenButton.interactable;
+
+        bool sandboxStarted = GameProgress.BeginPlaytestRun();
+        GameProgress.AddCrystals(100);
+        bool sandboxLifePurchase = GameProgress.BuyExtraLife();
+        bool sandboxPotionPurchase = GameProgress.BuyHealthPotion();
+        bool sandboxHeartPurchase = GameProgress.BuyHeartUpgrade();
+        GameProgress.ConsumeLife();
+        GameProgress.CollectSilverKey();
+        GameProgress.CollectBronzeKey(11);
+        GameProgress.MarkChestOpened(11);
+        GameProgress.CompleteLevel(11);
+        bool sandboxBehavedNormally = sandboxStarted && GameProgress.IsPlaytestRunActive &&
+            sandboxLifePurchase && sandboxPotionPurchase && sandboxHeartPurchase &&
+            GameProgress.Crystals == savedCrystals + 47 && GameProgress.Lives == savedLives &&
+            GameProgress.HealthPotions == savedPotions + 1 && GameProgress.MaxHearts == savedHearts + 1 &&
+            GameProgress.HighestUnlockedLevel == GameProgress.MaxMineLevel && GameProgress.HasSilverKey &&
+            GameProgress.HasBronzeKey(11) && GameProgress.IsChestOpened(11);
+
+        GameProgress.EndPlaytestRun();
+        bool sandboxDiscarded = !GameProgress.IsPlaytestRunActive &&
+            GameProgress.Crystals == savedCrystals && GameProgress.Lives == savedLives &&
+            GameProgress.HealthPotions == savedPotions && GameProgress.MaxHearts == savedHearts &&
+            GameProgress.HighestUnlockedLevel == savedHighestLevel &&
+            GameProgress.HasSilverKey == savedSilverKey &&
+            GameProgress.HasBronzeKey(11) == savedBronzeKey &&
+            GameProgress.IsChestOpened(11) == savedChest;
+
+        bool failedRunSandboxStarted = GameProgress.BeginPlaytestRun();
+        GameProgress.AddCrystals(5);
+        GameProgress.RestartAfterGameOver();
+        bool failedRunDiscardedSafely = failedRunSandboxStarted && !GameProgress.IsPlaytestRunActive &&
+            GameProgress.PlaytestAccessEnabled && GameProgress.Crystals == savedCrystals &&
+            GameProgress.Lives == savedLives;
+
+        GameProgress.SetPlaytestAccess(false);
+        UnityEngine.Object.Destroy(probeObject);
+        UnityEngine.Object.Destroy(levelElevenObject);
+        return keyboardUnlockedEveryLevel && storyLocksRestored && controllerUnlockedEveryLevel &&
+            sandboxBehavedNormally && sandboxDiscarded && failedRunDiscardedSafely;
     }
 
     [Serializable]
@@ -558,6 +658,7 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         public bool exitDoorConfigured;
         public bool exitDoorInteractionPassed;
         public bool gameOverProgressResetPassed;
+        public bool playtestUnlockEasterEggPassed;
         public bool wallContactReleasePassed;
         public bool emptyHeartDisplayPassed;
         public bool pickRemovedPassed;
