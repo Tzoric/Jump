@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using UnityEngine;
 
 public sealed class MineMechanicsSmokeTester : MonoBehaviour
@@ -37,14 +38,19 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             outfitVisual != null && exitDoor != null && inventory != null && chest != null && levelMenu != null &&
             waypoints.Length == 11;
         bool damagePassed = false;
+        bool damageVisualRestorationPassed = false;
         bool healingPassed = false;
         bool automatedJumpPassed = false;
         bool jumpAnticipationPassed = false;
         bool powerRunJumpPassed = false;
-        bool controllerBindingsPassed = MineInput.ControllerRunButton == "A" &&
-            MineInput.ControllerJumpButton == "B" && MineInput.ControllerInteractButton == "X" &&
-            MineInput.ControllerPotionButton == "Y" && MineInput.ControllerPauseButton == "START" &&
-            MineInput.ControllerHomeButton == "BACK";
+        bool controllerBindingsPassed = MineInput.GetBindableActions().Length == MineInput.BindableActionCount &&
+            MineInput.GetDefaultControllerBindingPath(MineButtonAction.Run) == "<Gamepad>/buttonSouth" &&
+            MineInput.GetDefaultControllerBindingPath(MineButtonAction.Jump) == "<Gamepad>/buttonEast" &&
+            MineInput.GetDefaultControllerBindingPath(MineButtonAction.Interact) == "<Gamepad>/buttonWest" &&
+            MineInput.GetDefaultControllerBindingPath(MineButtonAction.Potion) == "<Gamepad>/buttonNorth" &&
+            MineInput.GetDefaultControllerBindingPath(MineButtonAction.Pause) == "<Gamepad>/start" &&
+            MineInput.GetDefaultControllerBindingPath(MineButtonAction.Home) == "<Gamepad>/select";
+        bool spikeHitboxShapePassed = VerifySpikeHitboxGeometry();
         bool pauseMenuPassed = false;
         bool deathActionLockPassed = false;
         bool weightPassed = false;
@@ -244,8 +250,12 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             Physics2D.SyncTransforms();
 
             int startingHealth = health.CurrentHealth;
+            SpriteRenderer minerRenderer = outfitVisual.VisualRenderer;
+            Color minerRestColor = minerRenderer == null ? Color.white : minerRenderer.color;
             damagePassed = health.TakeDamage(1, health.transform.position + Vector3.left) &&
                 health.CurrentHealth == startingHealth - 1;
+            bool damageFlashBecameVisible = minerRenderer != null &&
+                minerRenderer.color.a < minerRestColor.a - .05f;
             emptyHeartDisplayPassed = health.HealthDisplaySupportsHeartGlyph &&
                 health.HealthDisplayText.Contains("<color=#493B45>\u2665") &&
                 !health.HealthDisplayText.Contains("\u2661");
@@ -253,6 +263,21 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             int potionsBeforeUse = GameProgress.HealthPotions;
             healingPassed = health.TryUsePotion() && health.CurrentHealth == startingHealth &&
                 GameProgress.HealthPotions == potionsBeforeUse - 1;
+
+            // Deterministically reproduce the real boundary race: expire only the
+            // immunity clock while the first coroutine is visibly in its low-alpha
+            // wait, then accept another hit before that old wait can finish.
+            bool boundaryWasTranslucent = damageFlashBecameVisible && minerRenderer != null &&
+                minerRenderer.color.a < minerRestColor.a - .05f;
+            bool expiryForced = ExpireInvulnerabilityForRegression(health);
+            bool boundaryDamageAccepted = boundaryWasTranslucent && expiryForced &&
+                health.TakeDamage(1, health.transform.position + Vector3.right);
+            float flashRestoreDeadline = Time.time + 1.5f;
+            while (health.IsInvulnerable && Time.time < flashRestoreDeadline) yield return null;
+            yield return new WaitForSeconds(.12f);
+            damageVisualRestorationPassed = damageFlashBecameVisible && boundaryDamageAccepted &&
+                minerRenderer != null && minerRenderer.enabled && ColorsMatch(minerRenderer.color, minerRestColor);
+            health.Heal(1);
 
             weight.SetCarriedWeight(2f);
             weight.SetWeightMultiplier(0.5f);
@@ -264,8 +289,7 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             exitConfiguredPassed = exitDoor.DestinationScene == "DungeonOverview" &&
                 exitDoor.GetComponent<Collider2D>().enabled &&
                 exitDoor.GetComponent<Collider2D>().isTrigger &&
-                LevelExitDoor.ExitPrompt.Contains("X") && LevelExitDoor.ExitPrompt.Contains("UP") &&
-                LevelExitDoor.ExitPrompt.Contains("W");
+                LevelExitDoor.ExitPrompt.Contains("UP") && LevelExitDoor.ExitPrompt.Contains("W");
 
             Vector2 beforeChestTest = movementBody.position;
             movement.EnableAutomatedControl(true);
@@ -342,11 +366,15 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
 
             float respawnLockDeadline = Time.time + 2f;
             while (health.IsRespawning && Time.time < respawnLockDeadline) yield return null;
+            yield return null;
             bool lifeWasConsumed = GameProgress.Lives == livesBeforeDeathLock - 1;
+            bool respawnVisualRestored = minerRenderer != null && minerRenderer.enabled &&
+                ColorsMatch(minerRenderer.color, minerRestColor);
             bool potionCleanedUp = GameProgress.ConsumePotion();
             GameProgress.AddLife();
             deathActionLockPassed = actionsRejectedDuringDeath && !health.IsRespawning && health.CanAct &&
-                lifeWasConsumed && potionCleanedUp && GameProgress.Lives == livesBeforeDeathLock;
+                lifeWasConsumed && respawnVisualRestored && potionCleanedUp &&
+                GameProgress.Lives == livesBeforeDeathLock;
 
             movement.EnableAutomatedControl(true);
             movement.SetAutomatedInput(0f, false);
@@ -369,10 +397,11 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         }
 
         bool passed = referencesPresent && automatedJumpPassed && jumpAnticipationPassed && damagePassed &&
+            damageVisualRestorationPassed &&
             healingPassed && weightPassed && exitConfiguredPassed && gameOverProgressResetPassed &&
             exitDoorInteractionPassed && wallContactReleasePassed && emptyHeartDisplayPassed &&
             pickRemovedPassed && chestInteractionPassed && powerRunJumpPassed && controllerBindingsPassed &&
-            pauseMenuPassed && deathActionLockPassed;
+            pauseMenuPassed && deathActionLockPassed && spikeHitboxShapePassed;
         string reportPath = ReadArgument("-mechanicsReport") ??
             Path.Combine(Application.dataPath, "..", "Logs", "MineMechanicsSmokeTest.json");
         var result = new SmokeResult
@@ -380,11 +409,13 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             passed = passed,
             referencesPresent = referencesPresent,
             damagePassed = damagePassed,
+            damageVisualRestorationPassed = damageVisualRestorationPassed,
             healingPassed = healingPassed,
             automatedJumpPassed = automatedJumpPassed,
             jumpAnticipationPassed = jumpAnticipationPassed,
             powerRunJumpPassed = powerRunJumpPassed,
             controllerBindingsPassed = controllerBindingsPassed,
+            spikeHitboxShapePassed = spikeHitboxShapePassed,
             pauseMenuPassed = pauseMenuPassed,
             deathActionLockPassed = deathActionLockPassed,
             weightCalculationPassed = weightPassed,
@@ -419,6 +450,55 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         string[] arguments = Environment.GetCommandLineArgs();
         int index = Array.IndexOf(arguments, name);
         return index >= 0 && index + 1 < arguments.Length ? arguments[index + 1] : null;
+    }
+
+    private static bool ColorsMatch(Color actual, Color expected)
+    {
+        return Mathf.Abs(actual.r - expected.r) <= .001f &&
+            Mathf.Abs(actual.g - expected.g) <= .001f &&
+            Mathf.Abs(actual.b - expected.b) <= .001f &&
+            Mathf.Abs(actual.a - expected.a) <= .001f;
+    }
+
+    private static bool ExpireInvulnerabilityForRegression(PlayerHealth health)
+    {
+        FieldInfo deadline = typeof(PlayerHealth).GetField("invulnerableUntil",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        if (health == null || deadline == null) return false;
+
+        deadline.SetValue(health, Time.time - .01f);
+        return !health.IsInvulnerable;
+    }
+
+    private static bool VerifySpikeHitboxGeometry()
+    {
+        GameObject spike = new("Smoke Test Three-Tooth Spike Hitbox");
+        spike.transform.position = new Vector3(-500f,-500f,0f);
+        spike.transform.rotation = Quaternion.Euler(0f,0f,18f);
+        spike.transform.localScale = new Vector3(1.5f,1.25f,1f);
+        PolygonCollider2D polygon = SpikeHitboxGeometry.AddCollider(spike);
+        Physics2D.SyncTransforms();
+
+        bool shapeMatches = polygon.pathCount == SpikeHitboxGeometry.PathCount;
+        for (int path = 0; path < SpikeHitboxGeometry.PathCount && shapeMatches; path++)
+        {
+            Vector2[] points = polygon.GetPath(path);
+            shapeMatches = points.Length == SpikeHitboxGeometry.PointsPerPath;
+            for (int point = 0; point < points.Length && shapeMatches; point++)
+            {
+                shapeMatches = Vector2.Distance(points[point],
+                    SpikeHitboxGeometry.ExpectedPoint(path,point)) <= .002f;
+            }
+        }
+
+        float[] toothCenters = { -.5208333f, .0208333f, .5625f };
+        float[] transparentValleys = { -.25f, .2916667f };
+        bool teethHit = toothCenters.All(center =>
+            polygon.OverlapPoint(spike.transform.TransformPoint(new Vector2(center,0f))));
+        bool valleysClear = transparentValleys.All(valley =>
+            !polygon.OverlapPoint(spike.transform.TransformPoint(new Vector2(valley,0f))));
+        UnityEngine.Object.Destroy(spike);
+        return shapeMatches && teethHit && valleysClear;
     }
 
     private static bool VerifyGameOverProgressReset()
@@ -465,11 +545,13 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         public bool passed;
         public bool referencesPresent;
         public bool damagePassed;
+        public bool damageVisualRestorationPassed;
         public bool healingPassed;
         public bool automatedJumpPassed;
         public bool jumpAnticipationPassed;
         public bool powerRunJumpPassed;
         public bool controllerBindingsPassed;
+        public bool spikeHitboxShapePassed;
         public bool pauseMenuPassed;
         public bool deathActionLockPassed;
         public bool weightCalculationPassed;

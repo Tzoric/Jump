@@ -3,8 +3,8 @@
 ## Game Design Document
 
 **Status:** First dungeon production design
-**Version:** 0.6
-**Last updated:** July 15, 2026
+**Version:** 0.7a
+**Last updated:** July 16, 2026
 **Working title:** Jump
 
 This document is the current design authority for the playable Bronze Mines chapter. Later-dungeon ideas remain provisional unless they are explicitly marked confirmed.
@@ -43,31 +43,33 @@ Jump is a platforming game in which a little miner travels through increasingly 
 3. Enter an unlocked level.
 4. Traverse the tunnel, avoid hazards, and collect optional crystals and keys.
 5. Optionally use the level's bronze key to open its reward chest.
-6. Reach the supported exit door and press controller `X`, Up Arrow, or `W`.
+6. Reach the supported exit door and press the mapped Interact button (default `X`), Up Arrow, or `W`.
 7. Watch the miner visibly walk through the door, complete the level, and return to the overview.
-8. Spend crystals in the overview shop or continue to the next unlocked shaft.
+8. Spend crystals in the overview shop, adjust controller mappings on the Controls page, or continue to the next unlocked shaft.
 
 Normal levels unlock sequentially. Level 11 requires both completion of Level 10 and possession of the silver key. Completing Level 11 unlocks Level 12.
 
-During an active level, the player may press controller Back or Backspace to abandon the attempt and return directly to the `DungeonOverview` Shop. This convenience exit does not complete the level or consume a life, and it preserves all progress that has already been saved. Pause, potion, chest, door, and abandon actions are locked once a death/respawn transition begins so the final-life Game Over flow cannot be bypassed.
+During an active level, the player may press the mapped Return-to-Shop button (default Back) or Backspace to abandon the attempt and return directly to the `DungeonOverview` Shop. This convenience exit does not complete the level or consume a life, and it preserves all progress that has already been saved. Pause, potion, chest, door, and abandon actions are locked once a death/respawn transition begins so the final-life Game Over flow cannot be bypassed.
 
 ### Controls
 
-| Action | Input | Notes |
+| Action | Default controller / fixed keyboard input | Notes |
 |---|---|---|
 | Move | Controller left stick or D-pad; Arrow keys or `A` / `D` | Both Logitech movement controls are supported. Base horizontal speed is 7.5 units per second. |
-| Run | Controller `A`; Left or Right Shift | Hold while moving to run at 9 units per second. |
-| Jump | Controller `B`; Space | A grounded press shows an approximately 0.08-second squat before the ordinary force-12 impulse; holding after takeoff extends height for up to 0.24 seconds. |
-| Power jump | Hold a direction + controller `A` + `B`; hold a direction + Shift + Space | A directional run-jump commits at jump press, uses force 14.75, and supports a 0.26-second held-jump window. |
-| Parachute | Hold controller `B` or Space during a Level 12 descent | Deploys the parachute for a slower, steerable fall; release Jump to fast-drop. Ordinary jump launch is suppressed inside a descent zone. |
-| Open chest | Controller `X`; Up Arrow or `W` | Works only while standing in a chest's interaction range. Contact alone never claims the reward. |
-| Enter exit door | Controller `X`; Up Arrow or `W` | Works while grounded in the exit door's interaction range. Contact alone only displays the exit prompt. |
-| Use health potion | Controller `Y`; `H` | Consumes one potion and restores one heart. |
-| Pause / resume | Start; Escape or `P` | Toggles the in-level pause overlay without changing progress. |
-| Return to shop | Back; Backspace | Immediately returns to the `DungeonOverview` Shop without completing the level or consuming a life. Collected and purchased progress is preserved. |
+| Run | Controller `A`; Left or Right Shift | The controller button is remappable. Hold while moving to run at 9 units per second. |
+| Jump | Controller `B`; Space | The controller button is remappable. A grounded press shows an approximately 0.08-second squat before the ordinary force-12 impulse; holding after takeoff extends height for up to 0.24 seconds. |
+| Power jump | Hold a direction + mapped Run + Jump; hold a direction + Shift + Space | A directional run-jump commits at jump press, uses force 14.75, and supports a 0.26-second held-jump window. |
+| Parachute | Hold mapped Jump or Space during a Level 12 descent | Deploys the parachute for a slower, steerable fall; release Jump to fast-drop. Ordinary jump launch is suppressed inside a descent zone. |
+| Open chest | Controller `X`; Up Arrow or `W` | Interact is remappable. Works only while standing in a chest's interaction range; contact alone never claims the reward. |
+| Enter exit door | Controller `X`; Up Arrow or `W` | Interact is remappable. Works while grounded in the exit door's interaction range; contact alone only displays the exit prompt. |
+| Use health potion | Controller `Y`; `H` | The controller button is remappable. Consumes one potion and restores one heart. |
+| Pause / resume | Start; Escape or `P` | The controller button is remappable. Toggles the in-level pause overlay without changing progress. |
+| Return to shop | Back; Backspace | The controller button is remappable. Immediately returns to the `DungeonOverview` Shop without completing the level or consuming a life. |
 | Open inventory | `E` | Reserved for the broader inventory interface. |
 
-For the pictured Logitech F310, use the rear input-mode switch's **X** position for XInput. XInput provides the stable `A`/`B`/`X`/`Y`, Start, and Back layout used above. The game binds both the left stick and D-pad to movement; the F310 Mode button may swap those two hardware controls, but either remains a supported movement source.
+The overview has three pages: Levels, Shop, and Controls. The Controls page can remap Run, Jump/Parachute, Interact, Health Potion, Pause, and Return to Shop. It displays the active controller and current assignments, waits for the button used to select a row to be released, captures the next controller button, saves a versioned profile per controller model, and offers **Restore Defaults** for that model. Assigning a button already used by another action swaps the two assignments so every action remains reachable. Controller movement, keyboard controls, and UI navigation/submit remain fixed; Game Over does not erase controller preferences.
+
+For the pictured Logitech F310, the rear input-mode switch's **X** position is recommended. XInput provides the stable `A`/`B`/`X`/`Y`, Start, and Back defaults shown above. Other controller layouts can use the mapping screen. The game binds both the left stick and D-pad to movement; the F310 Mode button may swap those two hardware controls, but either remains a supported movement source.
 
 ---
 
@@ -93,9 +95,9 @@ For the pictured Logitech F310, use the rear input-mode switch's **X** position 
 ### Movement tuning
 
 - Base side movement is 7.5 units per second, 75% of the original speed. A future speed power-up may restore or exceed the old speed.
-- Holding controller `A` or either Shift key while moving raises horizontal speed to 9 units per second and selects the run animation.
+- Holding mapped Run (default controller `A`) or either Shift key while moving raises horizontal speed to 9 units per second and selects the run animation.
 - Gravity scale is 5.4, approximately 60% of the former value, so ascent and falling are readable beside the slower horizontal movement.
-- An ordinary controller-`B` or Space jump uses force 12 and a 0.24-second held-jump window. This is slightly higher than the first slowed-jump pass while remaining proportionate to the 7.5 side speed.
+- An ordinary mapped Jump (default controller `B`) or Space jump uses force 12 and a 0.24-second held-jump window. This is slightly higher than the first slowed-jump pass while remaining proportionate to the 7.5 side speed.
 - Pressing Jump while a direction and Run are already held commits a power jump before the anticipation squat. The committed jump uses force 14.75 and a 0.26-second held-jump window; releasing Run during the squat does not downgrade it to an ordinary jump.
 - A valid grounded jump press first commits to an approximately 0.08-second anticipation squat; the upward impulse occurs only after that readable pose has appeared.
 - Releasing the button during anticipation does not cancel the committed jump. A quick tap still receives the initial impulse, while continued input after takeoff controls additional height through the ordinary 0.24-second or committed-power 0.26-second held-jump window.
@@ -110,6 +112,8 @@ For the pictured Logitech F310, use the rear input-mode switch's **X** position 
 - The miner starts every level with five full hearts, plus any future permanent heart-capacity upgrades.
 - Filled and missing heart slots use the same supported filled-heart glyph. Missing hearts are shown with a dim color or reduced opacity rather than an outline-heart character that the active font may render as an empty square.
 - A spike hit removes exactly one heart and grants brief damage invulnerability.
+- The miner may flash translucent during damage invulnerability, but must always return to full opacity afterward. Repeated damage, respawning, leaving a scene, and the door-entry fade cannot leave the character partially transparent.
+- Spike damage geometry follows the visible teeth rather than a rectangular sprite bound. Each three-tooth Bronze Mines spike uses three inset triangular trigger paths; transparent valleys beside and between the teeth cannot remove health. Rotation and non-uniform scale must transform the art and hitbox together.
 - A health potion restores exactly one missing heart and cannot exceed the current maximum.
 - A new save begins with three lives. A life represents one complete attempt, so the starting balance provides three attempts rather than three respawns after the first attempt.
 - Reaching zero hearts consumes one life. If another life remains, restart the level from its beginning.
@@ -126,9 +130,9 @@ For the pictured Logitech F310, use the rear input-mode switch's **X** position 
 ### Doors and completion
 
 - The exit is reached by a grounded player at the end of the intended route.
-- Touching the exit only displays `PRESS X / UP / W TO EXIT LEVEL`; it does not complete the level, hide the miner, or teleport the character.
-- Pressing controller `X`, Up Arrow, or `W` while grounded in the door's interaction range locks control and starts a short cutscene that visibly walks the miner into the doorway before the overview loads.
-- Pressing controller Back or Backspace is a separate abandon-level action. It returns directly to the `DungeonOverview` Shop without playing the completion cutscene, unlocking the next level, or consuming a life; saved crystals, keys, opened chests, potions, lives, and upgrades remain intact.
+- Touching the exit only displays the mapped Interact button plus `UP / W`; it does not complete the level, hide the miner, or teleport the character.
+- Pressing mapped Interact (default controller `X`), Up Arrow, or `W` while grounded in the door's interaction range locks control and starts a short cutscene that visibly walks the miner into the doorway before the overview loads.
+- Pressing mapped Return to Shop (default Back) or Backspace is a separate abandon-level action. It returns directly to the `DungeonOverview` Shop without playing the completion cutscene, unlocking the next level, or consuming a life; saved crystals, keys, opened chests, potions, lives, upgrades, and controller mappings remain intact.
 - Every ordinary door must have a solid platform directly beneath it. A floating or unsupported door is allowed only when a level brief explicitly calls for one.
 
 ### Platforms
@@ -258,7 +262,7 @@ Every Bronze Mines level contains one hidden bronze key and one reward chest.
 ### Chest rules
 
 - A chest remains locked until its same-level bronze key has been collected.
-- Entering interaction range displays either the locked message, `PRESS X / UP / W TO OPEN CHEST`, or `CHEST ALREADY OPENED`; the reward is granted only on a fresh controller-`X`, Up Arrow, or `W` press.
+- Entering interaction range displays either the locked message, the current mapped Interact button plus `UP / W`, or `CHEST ALREADY OPENED`; the reward is granted only on a fresh mapped-Interact, Up Arrow, or `W` press.
 - Opening consumes the key's use for that chest and permanently records that the chest was opened.
 - A chest can be claimed only once per save; replaying a level cannot farm repeated random rewards.
 - A replayed claimed chest uses a clearly open/empty sprite and keeps its prompt trigger enabled so it explains its state instead of looking like an unresponsive closed chest. Already-collected bronze keys do not reappear.
@@ -328,12 +332,13 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 - Levels 3-10 unlock sequentially.
 - Level 11 remains locked without both Level 10 completion and the saved silver key.
 - Level 12 remains locked until Level 11 is completed.
-- All twelve exits have foundations, remain inactive on contact alone, require controller `X` or Up/W, and use the visible door-entry transition.
+- All twelve exits have foundations, remain inactive on contact alone, require mapped Interact or Up/W, and use the visible door-entry transition.
 - All twelve levels contain one bronze key and one persisted chest.
-- All chests require controller `X` or Up/W, remain closed on contact alone, and restore an unmistakable open state after being claimed.
+- All chests require mapped Interact or Up/W, remain closed on contact alone, and restore an unmistakable open state after being claimed.
 - Horizontal levels contain lethal bottomless pit zones.
 - Ordinary stacked platforms satisfy the collider-based headroom rule; every smaller clearance is an explicitly named head-bump challenge.
 - Level 2's varied upper platforms rise diagonally, its ramp remains parallel beneath them, and its upward-facing spikes deal one heart.
+- Every Bronze Mines spike uses three inset polygon paths aligned to its visible teeth. Automated overlap checks hit each tooth center and reject both transparent valleys, including on rotated and scaled variants.
 - Level 3 has no lethal trigger intersecting a platform, spawn, required landing, or normal jump corridor.
 - Level 10's required route contains validated directional power jumps, and each accepted landing retains at least 0.25 world units of safe horizontal clearance from damaging spikes.
 - Level 11 contains exactly five blue crystals and one purple crystal, with values 5 and 20.
@@ -342,7 +347,7 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 - Spending the final life loads the Game Over screen; only its Restart action clears all progression and economy data, begins a new three-life run, and returns to the overview.
 - Shop prices and potion healing match this document.
 - The default miner can complete every required route without a purchase or power-up.
-- Input validation confirms left-stick and D-pad movement; `A`/Shift run; `B`/Space jump; directional `A+B`/Shift+Space power jump; `X`/Up/W interaction; `Y`/H potion; Start/Escape/P pause; and Back/Backspace return-to-shop behavior.
+- Input validation confirms fixed left-stick/D-pad and keyboard controls; six stable default controller bindings; the three-page Levels/Shop/Controls overview; six wired mapping rows; per-model persistence; conflict swapping; and Restore Defaults without coupling gameplay overrides to UI navigation.
 - A grounded ordinary or power jump holds row-2 frame 1 for approximately 0.08 seconds before upward velocity begins, then advances directly to frame 2; a quick tap still launches, a held input produces the expected higher arc, and a power jump remains committed through its squat.
 - Pausing freezes and resumes level simulation cleanly. Returning home from either running or paused play restores normal time, loads the `DungeonOverview` Shop, preserves saved progress, and grants neither completion nor a life penalty.
 - The hero collider is zero-friction and cannot remain pinned to a wall or platform edge under sustained movement input.
@@ -353,9 +358,10 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 
 - Confirm that the slower side speed and higher jump feel controlled rather than sluggish.
 - Confirm the 9-unit run is visibly faster than the 7.5-unit walk and selects the run animation, and that a directional power jump is distinct without replacing the ordinary jump.
-- On a Logitech F310 in rear-switch X/XInput mode, complete a controller-only pass with both the left stick and D-pad; verify `A`, `B`, `X`, `Y`, Start, and Back match the control table.
+- On a Logitech F310 in rear-switch X/XInput mode, complete a controller-only pass with both the left stick and D-pad; verify the defaults match the table, remap all six actions, change two assignments through conflict swapping, reload the game to confirm persistence, and restore defaults.
 - Confirm the brief squat is readable without making jump input feel delayed, no standing frame flashes between squat and rise, and the squat never appears after takeoff.
 - Confirm that the thin platforms remain readable and their collision matches their artwork.
+- Brush through the transparent sides and valleys of upright, angled, wall-mounted, and scaled spikes; health must change only when the miner overlaps a visible tooth.
 - Confirm ordinary jumps have noticeably more overhead clearance, while every deliberate head-bump challenge is clearly telegraphed and documented.
 - Verify the Bronze Miner has no visible pickaxe and that removing the tool does not disturb the body animation or future attachment point.
 - Verify every outfit preserves the hero's recognizable face, scale, collider alignment, and full directional animation contract.
@@ -366,8 +372,9 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 - Verify that bottomless pit deaths are clear and never resemble recoverable Level 2 falls.
 - Verify sustained input against both sides of walls and platform edges cannot friction-lock the miner.
 - Damage the miner and confirm missing health appears as dim filled hearts, never empty font-missing squares.
-- Approach each chest with and without its bronze key; verify contact does not open it, controller `X` or Up/W opens it exactly once when keyed, and replay shows the open sprite plus `CHEST ALREADY OPENED` without recreating the key.
-- Approach every exit and verify contact only shows `PRESS X / UP / W TO EXIT LEVEL`; while grounded, press controller `X` or Up/W and confirm that the back-facing walk-through begins exactly once before the overview loads.
+- Take damage again as soon as invulnerability expires, then lose a life and respawn; after both sequences the miner must return to full opacity rather than retaining a flash frame.
+- Approach each chest with and without its bronze key; verify contact does not open it, mapped Interact or Up/W opens it exactly once when keyed, and replay shows the open sprite plus `CHEST ALREADY OPENED` without recreating the key.
+- Approach every exit and verify contact only shows the current Interact mapping plus Up/W; while grounded, press mapped Interact or Up/W and confirm that the back-facing walk-through begins exactly once before the overview loads.
 - Clear every required Level 10 spike crossing with directional power jumps, verify each accepted landing has at least 0.25 world units of safe clearance, and confirm the ordinary jump cannot accidentally masquerade as a validated power jump.
 - Pause and resume with Start, Escape, and `P`. From both live and paused play, use Back or Backspace and verify the Shop opens without completing the level or consuming a life and that all saved progress remains available.
 - Play all three Level 12 descents using both deployed and released parachute states; verify the downward camera reveals every warning, hidden hazards never damage before revealing, moving hazards leave a viable lane, and localized pits do not overlap another section.
@@ -414,7 +421,7 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 - [ ] The player cannot become permanently trapped.
 - [ ] Horizontal pits are unmistakably lethal; recoverable ramps are unmistakably recoverable.
 - [ ] The bronze key and chest are optional, persisted, and belong to this level.
-- [ ] The exit has a platform, requires controller `X` or Up/W while grounded in range, and then plays the walk-through cutscene.
+- [ ] The exit has a platform, requires mapped Interact or Up/W while grounded in range, and then plays the walk-through cutscene.
 - [ ] Crystal colors and values match the economy table.
 - [ ] Automated waypoints cover the intended route.
 
@@ -426,8 +433,7 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 2. Should later heart upgrades use a flat or increasing price?
 3. Which new traversal mechanic should distinguish the Silver Mines from the Bronze Mines?
 4. Should later dungeons also contain twelve levels, or use a different tunnel count?
-5. Should a later accessibility pass allow player-remappable controls beyond the confirmed keyboard and Logitech/XInput layout?
-6. Which platforms and intended player age should guide accessibility and storefront decisions?
+5. Which platforms and intended player age should guide accessibility and storefront decisions?
 
 ---
 
@@ -446,6 +452,8 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 
 | Version | Date | Change |
 |---|---|---|
+| 0.7a | July 16, 2026 | Made damage flashing a single owned visual state so boundary-timed repeat hits, respawn, shutdown, and door entry always restore the miner's authored full opacity; added runtime regression coverage. |
+| 0.7 | July 16, 2026 | Replaced rectangular spike damage bounds with three inset visible-tooth polygon paths; added a third overview Controls page; made Run, Jump/Parachute, Interact, Potion, Pause, and Return-to-Shop controller buttons remappable; added per-controller-model persistence, conflict swapping, fixed keyboard/UI navigation, dynamic prompts/HUD labels, and Restore Defaults. |
 | 0.6 | July 15, 2026 | Added the complete keyboard and Logitech/XInput control layout; introduced 9-unit running and committed force-14.75 directional power jumps; assigned controller actions for interaction, potions, pause, and return to the overview Shop; documented progress-preserving mid-level return; and made Level 10 power jumps and 0.25-unit spike-landing clearance part of validation. |
 | 0.5b | July 15, 2026 | Changed exit doors to the same explicit proximity interaction as chests; contact now shows an exit prompt without completing the level, and automated validation proves explicit input starts the existing walk-through sequence. |
 | 0.5a | July 15, 2026 | Changed reward chests to explicit proximity interaction; added locked, ready, and already-opened HUD feedback; added a distinct persistent open-chest visual; hid collected bronze keys on replay; and added one-time reward regression coverage. |

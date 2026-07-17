@@ -4,13 +4,13 @@
 
 `Assets/Scenes/DungeonOverview.unity` is first in Build Settings and must always contain an enabled rendering camera. The Bronze Mines overview has twelve interactive mineshafts, one for every playable tunnel. It must never show Unity's `No cameras rendering` message.
 
-Levels unlock sequentially through Level 10. Level 11 unlocks only when Level 10 has been completed and the persistent silver key hidden in Level 10 has been collected. Completing Level 11 unlocks Level 12. Reaching an exit only shows `PRESS X / UP / W TO EXIT LEVEL`; a grounded controller-X, Up, or `W` press in range locks control, visibly walks the miner through the supported doorway, records completion, and returns to the overview.
+Levels unlock sequentially through Level 10. Level 11 unlocks only when Level 10 has been completed and the persistent silver key hidden in Level 10 has been collected. Completing Level 11 unlocks Level 12. Reaching an exit only shows the current Interact binding plus Up/W; a grounded mapped-Interact, Up, or `W` press in range locks control, visibly walks the miner through the supported doorway, records completion, and returns to the overview.
 
-At any point before the exit or death/respawn sequence begins, Start pauses the current level and Back abandons it to the overview shop. This retreat keeps already-saved rewards and the current life balance, restores normal time, and does not complete the level, unlock another tunnel, or charge a life.
+At any point before the exit or death/respawn sequence begins, mapped Pause (default Start) pauses the current level and mapped Return to Shop (default Back) abandons it to the overview shop. This retreat keeps already-saved rewards and the current life balance, restores normal time, and does not complete the level, unlock another tunnel, or charge a life.
 
 When the player spends the final life, load the Game Over screen rather than `DungeonOverview`. Its **Restart** button clears the previous run's level unlocks, crystals, potions, heart upgrades, silver and bronze keys, and opened-chest state; it then creates a fresh three-life run and loads the overview.
 
-The overview also contains the earned-currency shop. Current prices are three green crystals for one health potion and twenty-five for one extra life.
+The overview has three mutually exclusive pages: twelve-tunnel Levels, the earned-currency Shop, and controller Controls. Current prices are three green crystals for one health potion and twenty-five for one extra life.
 
 ## Project conventions
 
@@ -18,7 +18,8 @@ The overview also contains the earned-currency shop. Current prices are three gr
 - Put playable scenes in `Assets/Scenes` and enable the overview followed by Levels 1-12 in progression order.
 - Build reusable objects as prefabs instead of duplicating configured scene objects.
 - Commit `.meta` files with their matching Unity assets.
-- Every ordinary exit door must have a solid platform directly beneath it and an enabled proximity trigger. Contact only shows the exit prompt; grounded controller-X or keyboard Up/W starts entry. Only an explicit level brief may allow a floating door.
+- Every ordinary exit door must have a solid platform directly beneath it and an enabled proximity trigger. Contact only shows the exit prompt; grounded mapped Interact or keyboard Up/W starts entry. Only an explicit level brief may allow a floating door.
+- Bronze spike damage uses `SpikeHitboxGeometry`: one `PolygonCollider2D` trigger with three inset triangular paths matching the visible teeth. Never replace it with a sprite-sized box or add damage across the transparent side/valley pixels; transforms apply rotation and non-uniform scale to art and collider together.
 - Mine platforms use irregular dark rocks with bronze mineral veins through and between them. Do not render them as bronze-framed rectangles.
 - Keep platform visuals and colliders thinner than the initial prototype while preserving stable landings.
 - Derive ordinary vertical headroom from the hero collider. For overlapping usable platform spans, require at least `standing collider height + 0.75` world units between the lower top and upper underside on main and optional routes.
@@ -27,7 +28,7 @@ The overview also contains the earned-currency shop. Current prices are three gr
 
 ## Player rules and presentation
 
-- Ordinary horizontal movement is 7.5 units per second, 75% of the original 10. Holding controller A or keyboard Shift with a horizontal direction raises movement to the 9-unit run speed.
+- Ordinary horizontal movement is 7.5 units per second, 75% of the original 10. Holding mapped Run (default controller A) or keyboard Shift with a horizontal direction raises movement to the 9-unit run speed.
 - The ordinary jump uses force 12, gravity scale 5.4, an approximately 0.08-second grounded anticipation, and a 0.24-second held-jump window after takeoff.
 - A directional power jump uses force 14.75 and a 0.26-second held-jump window. It is selected only when Run and a horizontal direction of at least 0.5 magnitude are held at the grounded jump press.
 - Power-jump qualification is latched when the squat begins. Do not re-evaluate it during anticipation and downgrade a committed A+B or Shift+Space power jump before takeoff; live horizontal input may still steer the airborne miner.
@@ -38,16 +39,17 @@ The overview also contains the earned-currency shop. Current prices are three gr
 - The silver helmet and small yellow lamp are integrated into the character art.
 - The Bronze Miner carries no pickaxe. Preserve the optional hand-tool attachment/profile architecture for later outfits or explicitly equipped tools, but do not instantiate or render a pick in the Bronze Mines.
 - The player starts each level with five hearts. A spike hit removes one heart; invulnerability prevents immediate repeated hits.
+- The damage flash is temporary presentation state. A new hit, respawn, component shutdown, or door entry must cancel any older flash and restore the miner body's authored color and full opacity before another system takes control.
 - Render missing health with the same supported filled-heart glyph at a dim color or opacity. Do not use the unsupported outline-heart character, which can appear as an empty square in the active font.
 - A new save starts with three lives, meaning three total attempts. Zero hearts consumes the current attempt and restarts the level only while another life remains.
 - Spending the final life loads the Game Over screen. It must not automatically load the overview; only Restart clears all run progression and economy state, begins a fresh three-life run, and loads the overview.
-- A potion restores exactly one heart and is consumed with controller Y or keyboard `H`.
+- A potion restores exactly one heart and is consumed with mapped Health Potion (default controller Y) or keyboard `H`.
 
 ### Centralized input and level-menu contract
 
-All gameplay scripts read player controls through `MineInput`; do not add independent raw controller mappings to movement, health, chests, doors, or level-menu scripts. The semantic mapping is:
+All gameplay scripts read player controls through `MineInput`; do not add independent raw controller mappings to movement, health, chests, doors, or level-menu scripts. The shipped controller defaults are:
 
-| Action | Controller | Keyboard fallback |
+| Action | Default controller | Fixed keyboard fallback |
 |---|---|---|
 | Move | Left stick or left D-pad | Arrow keys or `A` / `D` |
 | Run | Hold A | Hold either Shift key |
@@ -58,12 +60,17 @@ All gameplay scripts read player controls through `MineInput`; do not add indepe
 | Return to overview shop | Back | Backspace |
 | Confirm UI selection | A | Enter, keypad Enter, or Space |
 
-- `MineInput` uses Input System semantic `Gamepad` controls for A/B/X/Y, Start, Back, left stick, and D-pad, with the legacy XInput-index fallback only when no semantic gamepad is available.
-- Set a Logitech F310 to **XInput/X mode** before launching the game. This lets Unity expose its physical labels as the semantic A/B/X/Y, Start, and Back controls; DirectInput mode is not the supported mapping target.
+- `Assets/Resources/MineControllerActions.inputactions` is the controller-only six-button action asset. Its stable action/binding GUIDs are part of the save contract; do not recreate these bindings with random runtime IDs.
+- `MineInput` instantiates that asset, locks gameplay to one selected `Gamepad` or `Joystick`, loads a versioned PlayerPrefs override profile derived from the controller model, and exposes the existing static input facade. Movement, keyboard fallbacks, and UI Submit are intentionally outside those overrides.
+- `MineControlsController` owns the overview Controls page. It waits until the UI Submit press has been released, temporarily disables `InputSystemUIInputModule`, captures one button from the selected controller, saves automatically, and always disposes the rebind operation on completion, cancellation, timeout, page close, or device loss.
+- Run, Jump/Parachute, Interact, Potion, Pause, and Return to Shop are remappable. Selecting a button already assigned elsewhere swaps the two paths to prevent duplicate actions. **Restore Defaults** removes only the current controller-model profile. `GameProgress.RestartAfterGameOver` must not erase controller preferences.
+- Left stick/D-pad movement, all keyboard keys, and UI navigation/A-submit remain fixed so the mapping screen and Game Over can never become unreachable. Do not feed gameplay binding overrides into `InputSystemUIInputModule`.
+- A Logitech F310 is most predictable in **XInput/X mode**, where Unity exposes semantic A/B/X/Y, Start, and Back defaults. Other supported `Gamepad`/`Joystick` layouts can be captured on the Controls page; keep X mode as the recommended test configuration.
 - Overview, Game Over, and every level pause menu use exactly one `EventSystem` with `InputSystemUIInputModule` and assigned actions. Do not restore `StandaloneInputModule`; stick and D-pad navigation, A submit, and reliable initial selection depend on the Input System module.
 - Opening pause selects **Resume**. Overview and Game Over provide an initial controller-selected button so the menus work without a mouse.
-- `MineLevelMenuController` owns level pause and retreat. Start/Escape/`P` toggles its pause panel and `Time.timeScale` between 0 and 1; disabling the controller must also restore normal time.
-- Back/Backspace calls `ReturnToOverview`, restores `Time.timeScale` to 1, requests the overview's Shop page through the one-shot `OverviewArrival` state, and loads `DungeonOverview` without calling `GameProgress.CompleteLevel`, consuming a life, or resetting progress. Pause and retreat are disabled after either the exit-door completion sequence or a death/respawn sequence begins. Potion, chest, and door actions also reject a dead or respawning player. An overview entered with zero lives redirects to `GameOver`.
+- `MineControlHintDisplay` keeps the in-level HUD and pause overlay synchronized with the active controller profile. Chest and door proximity prompts query the current Interact display string instead of serializing `X`.
+- `MineLevelMenuController` owns level pause and retreat. Mapped Pause or Escape/`P` toggles its pause panel and `Time.timeScale` between 0 and 1; disabling the controller must also restore normal time.
+- Mapped Return to Shop or Backspace calls `ReturnToOverview`, restores `Time.timeScale` to 1, requests the overview's Shop page through the one-shot `OverviewArrival` state, and loads `DungeonOverview` without calling `GameProgress.CompleteLevel`, consuming a life, or resetting progress. Pause and retreat are disabled after either the exit-door completion sequence or a death/respawn sequence begins. Potion, chest, and door actions also reject a dead or respawning player. An overview entered with zero lives redirects to `GameOver`.
 
 ### Reusable hero animation and outfits
 
@@ -84,7 +91,7 @@ All gameplay scripts read player controls through `MineInput`; do not add indepe
 - Every level contains one level-specific bronze key and one chest.
 - A bronze key opens only the chest in its own level. Key collection and opened-chest state persist per level.
 - A chest is a one-time reward per save, preventing replay farming.
-- Entering chest range never claims a reward automatically. A keyed player must press controller X, Up, or `W` while the HUD shows `PRESS X / UP / W TO OPEN CHEST`.
+- Entering chest range never claims a reward automatically. A keyed player must press mapped Interact, Up, or `W` while the HUD shows the current Interact binding plus the fixed keyboard alternatives.
 - Locked chests report that the same-level bronze key is required. Persisted claimed chests retain an enabled proximity trigger, use the distinct open/empty sprite, and report `CHEST ALREADY OPENED` on replay.
 - Already-collected bronze keys remain hidden when their level is replayed, and the run-status HUD refreshes from saved key/chest state when the scene starts.
 - Chest rewards are 50% blue-crystal value (+5 currency), 45% one potion, and 5% one extra life.
@@ -177,16 +184,19 @@ Validation should fail if any of the following contracts are broken:
 - The overview has no active camera or does not have twelve level nodes.
 - A scene or level node is missing from progression order.
 - A level lacks a bronze key, chest, supported exit, player, camera, or automated route.
-- An exit completes on contact, lacks an enabled X/Up/W proximity trigger, omits the exit prompt, or bypasses the visible walk-in sequence.
-- A chest opens merely from contact, lacks an enabled X/Up/W proximity trigger, has no distinct open-state sprite, or silently ignores a replayed already-claimed state.
-- `MineInput` no longer maps A run, B jump, X interact, Y potion, Start pause, and Back return-to-shop, or movement omits either the left stick or left D-pad.
-- A level lacks its initially hidden `MineLevelMenuController` pause panel, Resume and Return-to-Shop actions, or explanatory Start/Back labels.
+- An exit completes on contact, lacks an enabled mapped-Interact/Up/W proximity trigger, omits the dynamic exit prompt, or bypasses the visible walk-in sequence.
+- A chest opens merely from contact, lacks an enabled mapped-Interact/Up/W proximity trigger, has no distinct open-state sprite, or silently ignores a replayed already-claimed state.
+- The controller action asset loses any of its six stable defaults/GUIDs, `MineInput` stops loading per-model overrides, or movement omits either the left stick or left D-pad.
+- The overview lacks distinct Levels/Shop/Controls pages, six wired mapping rows, active-controller/status labels, per-model help, conflict-safe capture, or Restore Defaults.
+- Gameplay overrides alter keyboard controls or `InputSystemUIInputModule`, duplicate two actions instead of swapping, survive Restore Defaults, or are erased by Game Over Restart.
+- A level lacks its initially hidden `MineLevelMenuController` pause panel, dynamic `MineControlHintDisplay`, Resume action, or Return-to-Shop action.
 - An overview, Game Over, or level UI scene lacks its single action-backed `InputSystemUIInputModule`, uses `StandaloneInputModule`, or omits the required initial controller selection.
 - Ordinary platform overlap provides less than `hero collider height + 0.75` headroom without an explicit, documented `Intentional Head-Bump Challenge` marker.
 - Level 11 can unlock without both prerequisites.
 - Level 12 can unlock before Level 11 is completed.
 - Level 2's upper centers do not rise diagonally, widths and two-axis gaps do not vary, or the 18-degree low-friction ramp is not parallel beneath the route.
 - Any Level 2 ramp spike points sideways instead of upward, or the no-input slide does not reach the retry bottom.
+- Any spike uses a rectangular damage collider, differs from the three inset triangle paths, misses a visible tooth center, or overlaps either transparent valley after its authored transform.
 - Levels 3, 6, or 9 lack lethal pit zones, or Level 12's localized pit triggers extend outside their visible horizontal gaps.
 - Any Level 3 lethal trigger overlaps playable geometry or an intended movement corridor, or the focused spawn-to-first-landing regression loses health or a life.
 - Final-life depletion bypasses `GameOver.unity`, Restart fails to restore three lives, or any crystals, potions, upgrades, unlocks, keys, or opened-chest state survives Restart.
@@ -224,17 +234,18 @@ The controller waits for the spawn landing, runs at normal gameplay time, and no
 
 The mechanics smoke test can be run with `-executeMethod MineMechanicsSmokeTestCommand.Run -mineMechanicsSmokeTest -mechanicsReport <report-file>`. It observes the jump transition itself: immediately after a grounded press, the miner remains grounded with approximately zero upward velocity and displays `bronze_miner_2_1`; after roughly 0.08 seconds, upward velocity begins and the visible body advances directly to `bronze_miner_2_2`, without returning to `bronze_miner_2_0`. Coverage includes a quick tap that still launches, a held ordinary jump, 7.5 walk versus 9 run speed and their animation rows, and a committed directional 14.75/.26 power jump that exceeds the ordinary arc and travels horizontally. Route playtests must retain enough observation time for the anticipation delay.
 
-Input and menu smoke coverage verifies the centralized A/B/X/Y/Start/Back contract, toggles `MineLevelMenuController` into and out of a zero-time-scale pause with the panel state synchronized, confirms its home target is `DungeonOverview`, and proves death/respawn rejects pause, retreat, and potion consumption while still consuming exactly one life. The separate `-playtestReturnHome` scene-transition coverage returns from the paused state and proves retreat opens the Shop, restores normal time, preserves progress, and does not complete the abandoned level or spend a life.
+Input and menu smoke coverage verifies the six stable default binding paths plus the runtime three-tooth collider shape, toggles `MineLevelMenuController` into and out of a zero-time-scale pause with the panel state synchronized, confirms its home target is `DungeonOverview`, and proves death/respawn rejects pause, retreat, and potion consumption while still consuming exactly one life. Scene validation independently checks all Controls-page rows/listeners, stable action GUIDs, dynamic HUD/prompt components, and both transparent spike valleys. The separate `-playtestReturnHome` scene-transition coverage returns from the paused state and proves retreat opens the Shop, restores normal time, preserves progress, and does not complete the abandoned level or spend a life.
 
-Chest smoke coverage verifies that contact alone does not open a chest, an X/Up/W interaction without the key is rejected, a keyed interaction grants exactly one deterministic reward, a second interaction cannot duplicate it, and replay state restores the open sprite, prompt trigger, hidden collected key, and `CHEST ALREADY OPENED` feedback.
+Chest smoke coverage verifies that contact alone does not open a chest, a mapped-Interact/Up/W interaction without the key is rejected, a keyed interaction grants exactly one deterministic reward, a second interaction cannot duplicate it, and replay state restores the open sprite, prompt trigger, hidden collected key, and `CHEST ALREADY OPENED` feedback.
 
-Door smoke coverage verifies that contact alone leaves the exit unused, proximity displays `PRESS X / UP / W TO EXIT LEVEL`, and an explicit grounded X/Up/W interaction starts the existing kinematic walk-through transition. The full virtual-controller traversal then verifies that this explicit activation reaches only the configured overview scene.
+Door smoke coverage verifies that contact alone leaves the exit unused, proximity displays the current Interact binding plus Up/W, and an explicit grounded mapped-Interact/Up/W interaction starts the existing kinematic walk-through transition. The full virtual-controller traversal then verifies that this explicit activation reaches only the configured overview scene.
 
 The unattended command requires other Unity instances using the project to be closed. A timeout means the controller failed to execute the authored route or the door transition did not complete.
 
 ## Reusable mechanics
 
 - `DamageZone` handles stationary hazards and lethal pits.
+- `SpikeHitboxGeometry` authors the only valid Bronze spike trigger: three disconnected inset triangular paths, with no damaging base strip or valley air.
 - `FallingSpike` warns, falls when the player passes below, and resets.
 - `MovingPlatform` supports horizontal or vertical travel with pauses.
 - `WeightedBreakablePlatform` spends durability according to apparent weight.
@@ -250,6 +261,7 @@ Apparent weight is `(base + carried) x weight multiplier x gravity multiplier`.
 
 - Platform silhouettes read as separate rocks with branching bronze veins, not smooth bronze edging.
 - Platform collision matches the visibly thinner top surface.
+- Spike collision stays inside visible teeth on upright, rotated, wall-mounted, and non-uniformly scaled hazards; transparent valleys never damage.
 - The miner sprite has an integrated silver helmet and yellow lamp at gameplay scale.
 - The Bronze Miner has no visible pickaxe, while the optional hand-tool attachment remains available for future profiles.
 - The anticipation squat is visibly held before the miner leaves the ground, transitions directly into the rise pose, and never appears suspended in midair.

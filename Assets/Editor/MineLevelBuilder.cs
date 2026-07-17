@@ -751,14 +751,14 @@ public static class MineLevelBuilder
 
     private static void CreateSpike(Transform parent,Sprite sprite,Vector2 position,float angle)
     {
-        GameObject go=new("Bronze Spike - 1 Heart"); go.transform.SetParent(parent); go.transform.position=position; go.transform.rotation=Quaternion.Euler(0,0,angle); SpriteRenderer renderer=go.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=5; BoxCollider2D trigger=go.AddComponent<BoxCollider2D>(); trigger.isTrigger=true; trigger.size=new Vector2(1.2f,.65f); trigger.offset=new Vector2(0,.12f); go.AddComponent<DamageZone>().Configure(1);
+        GameObject go=new("Bronze Spike - 1 Heart"); go.transform.SetParent(parent); go.transform.position=position; go.transform.rotation=Quaternion.Euler(0,0,angle); SpriteRenderer renderer=go.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=5; SpikeHitboxGeometry.AddCollider(go); go.AddComponent<DamageZone>().Configure(1);
     }
 
     private static void CreateHiddenDescentSpike(Transform parent,Sprite sprite,string name,Vector2 position,float angle)
     {
         GameObject go=new(name); go.transform.SetParent(parent); go.transform.position=position; go.transform.rotation=Quaternion.Euler(0,0,angle); go.transform.localScale=new Vector3(1.5f,1.25f,1f);
         SpriteRenderer renderer=go.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=6;
-        BoxCollider2D trigger=go.AddComponent<BoxCollider2D>(); trigger.isTrigger=true; trigger.size=new Vector2(1.2f,.65f); trigger.offset=new Vector2(0,.12f);
+        SpikeHitboxGeometry.AddCollider(go);
         go.AddComponent<DamageZone>().Configure(1);
         go.AddComponent<ProximityHiddenHazard>().Configure(10f,.6f);
     }
@@ -767,7 +767,7 @@ public static class MineLevelBuilder
     {
         GameObject go=new(name); go.transform.SetParent(parent); go.transform.position=position; go.transform.localScale=new Vector3(2.3f,1.15f,1f);
         SpriteRenderer renderer=go.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=6;
-        BoxCollider2D trigger=go.AddComponent<BoxCollider2D>(); trigger.isTrigger=true; trigger.size=new Vector2(1.2f,.65f); trigger.offset=new Vector2(0,.12f);
+        SpikeHitboxGeometry.AddCollider(go);
         go.AddComponent<DamageZone>().Configure(1);
         Rigidbody2D body=go.AddComponent<Rigidbody2D>(); body.bodyType=RigidbodyType2D.Kinematic; body.gravityScale=0f;
         go.AddComponent<OscillatingHazard>().Configure(Vector2.right,travelDistance,.24f,phase);
@@ -881,7 +881,7 @@ public static class MineLevelBuilder
         hero.GetComponent<MineRunInventory>().Configure(level.Number,status);
 
         string controls=$"{instruction}\n"+
-            "CONTROLLER: STICK / D-PAD MOVE  |  A RUN + B JUMP = POWER JUMP  |  X INTERACT  |  Y POTION  |  START PAUSE  |  BACK SHOP\n"+
+            "CONTROLLER BUTTONS LOAD AT RUNTIME  |  REMAP: OVERVIEW > CONTROLS\n"+
             "KEYBOARD: ARROWS / A-D MOVE  |  SHIFT RUN + SPACE JUMP  |  UP / W INTERACT  |  H POTION  |  ESC PAUSE  |  BACKSPACE SHOP";
         TextMeshProUGUI instructions=Text(canvas.transform,"Instructions",controls,15,TextAlignmentOptions.Center,Color.white);
         instructions.textWrappingMode=TextWrappingModes.NoWrap;
@@ -907,20 +907,78 @@ public static class MineLevelBuilder
         CreateActionButton(pause.transform,"Return To Shop Button","RETURN TO OVERVIEW / SHOP",
             new Vector2(0,-165),menu.ReturnToOverview);
         menu.Configure(pause,resume.gameObject);
+        canvas.gameObject.AddComponent<MineControlHintDisplay>().Configure(instructions,pauseHelp,instruction);
         CreateEventSystem(null);
     }
 
     private static void BuildOverview(Sprite background)
     {
-        Scene scene=EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single); Camera camera=CreateCameraBase(new Vector3(0,0,-10)); camera.orthographicSize=5; Canvas canvas=CreateCanvas("Bronze Mines Overview Canvas"); FullImage(canvas.transform,"Bronze Mines Overview Background",background,Color.white); FullImage(canvas.transform,"Readability Overlay",null,new Color(.02f,.03f,.06f,.34f)); TextMeshProUGUI heading=Text(canvas.transform,"Dungeon Heading","DUNGEON 1  —  BRONZE MINES",40,TextAlignmentOptions.Center,Color.white); Rect(heading.rectTransform,new(.5f,1),new(.5f,1),new(0,-28),new(1000,60)); TextMeshProUGUI balance=Text(canvas.transform,"Persistent Balance","",20,TextAlignmentOptions.Center,new Color32(130,255,165,255)); Rect(balance.rectTransform,new(.5f,1),new(.5f,1),new(0,-88),new(1200,40));
-        GameObject levels=Panel(canvas.transform,"Twelve Tunnel Level Map",new Color(.025f,.035f,.06f,.78f)); Rect((RectTransform)levels.transform,new(.5f,.5f),new(.5f,.5f),new(0,-15),new(1540,620)); TextMeshProUGUI mapTitle=Text(levels.transform,"Map Rule","12 TUNNELS  •  VERTICAL → ANGLED → HORIZONTAL → MIXED FINALE",23,TextAlignmentOptions.Center,Amber); Rect(mapTitle.rectTransform,new(.5f,1),new(.5f,1),new(0,-25),new(1100,38));
+        Scene scene=EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);
+        Camera camera=CreateCameraBase(new Vector3(0,0,-10));
+        camera.orthographicSize=5;
+        Canvas canvas=CreateCanvas("Bronze Mines Overview Canvas");
+        FullImage(canvas.transform,"Bronze Mines Overview Background",background,Color.white);
+        FullImage(canvas.transform,"Readability Overlay",null,new Color(.02f,.03f,.06f,.34f));
+        TextMeshProUGUI heading=Text(canvas.transform,"Dungeon Heading","DUNGEON 1  —  BRONZE MINES",40,TextAlignmentOptions.Center,Color.white);
+        Rect(heading.rectTransform,new(.5f,1),new(.5f,1),new(0,-28),new(1000,60));
+        TextMeshProUGUI balance=Text(canvas.transform,"Persistent Balance","",20,TextAlignmentOptions.Center,new Color32(130,255,165,255));
+        Rect(balance.rectTransform,new(.5f,1),new(.5f,1),new(0,-88),new(1200,40));
+
+        GameObject levels=Panel(canvas.transform,"Twelve Tunnel Level Map",new Color(.025f,.035f,.06f,.78f));
+        Rect((RectTransform)levels.transform,new(.5f,.5f),new(.5f,.5f),new(0,-15),new(1540,620));
+        TextMeshProUGUI mapTitle=Text(levels.transform,"Map Rule","12 TUNNELS  •  VERTICAL → ANGLED → HORIZONTAL → MIXED FINALE",23,TextAlignmentOptions.Center,Amber);
+        Rect(mapTitle.rectTransform,new(.5f,1),new(.5f,1),new(0,-25),new(1100,38));
         GameObject firstLevelSelection=null;
         for(int i=0;i<Levels.Length;i++)
         {
             int row=i/6; int column=i%6; const float spacing=235f; const float count=6f; float x=(column-(count-1)*.5f)*spacing; float y=row==0?115:-115; Button node=CreateLevelNode(levels.transform,Levels[i],new Vector2(x,y)); if(i==0) firstLevelSelection=node.gameObject;
         }
-        TextMeshProUGUI gate=Text(levels.transform,"Final Gates","LEVEL 11: FINISH LEVEL 10 + FIND THE SILVER KEY     •     LEVEL 12: FINISH LEVEL 11",18,TextAlignmentOptions.Center,new Color32(210,220,235,255)); Rect(gate.rectTransform,new(.5f,0),new(.5f,0),new(0,22),new(1250,35));
-        GameObject shop=Panel(canvas.transform,"Shop Page",new Color(.025f,.035f,.06f,.94f)); Rect((RectTransform)shop.transform,new(.5f,.5f),new(.5f,.5f),new(0,-15),new(860,520)); TextMeshProUGUI shopTitle=Text(shop.transform,"Shop Title","MINER'S SUPPLY SHOP",34,TextAlignmentOptions.Center,Amber); Rect(shopTitle.rectTransform,new(.5f,1),new(.5f,1),new(0,-30),new(700,55)); TextMeshProUGUI status=Text(shop.transform,"Shop Status","Potions restore one heart.",20,TextAlignmentOptions.Center,Color.white); Rect(status.rectTransform,new(.5f,0),new(.5f,0),new(0,28),new(760,45)); MineShopController controller=canvas.gameObject.AddComponent<MineShopController>(); Button buyLife=CreateActionButton(shop.transform,"Buy Life",$"EXTRA LIFE  —  {GameProgress.ExtraLifePrice} GREEN GEMS",new Vector2(0,110),controller.BuyExtraLife); CreateActionButton(shop.transform,"Buy Potion",$"HEALTH POTION (+1 HEART)  —  {GameProgress.HealthPotionPrice} GREEN GEMS",new Vector2(0,10),controller.BuyHealthPotion); CreateActionButton(shop.transform,"Buy Heart",$"+1 HEART CAPACITY  —  {GameProgress.HeartUpgradePrice} GREEN GEMS",new Vector2(0,-90),controller.BuyHeartUpgrade); CreateActionButton(canvas.transform,"Levels Tab","LEVELS",new Vector2(-130,-495),controller.ShowLevels); CreateActionButton(canvas.transform,"Shop Tab","SHOP",new Vector2(130,-495),controller.ShowShop); controller.Configure(levels,shop,balance,status,firstLevelSelection,buyLife.gameObject); controller.ShowLevels(); CreateEventSystem(firstLevelSelection); EditorSceneManager.SaveScene(scene,OverviewPath);
+        TextMeshProUGUI gate=Text(levels.transform,"Final Gates","LEVEL 11: FINISH LEVEL 10 + FIND THE SILVER KEY     •     LEVEL 12: FINISH LEVEL 11",18,TextAlignmentOptions.Center,new Color32(210,220,235,255));
+        Rect(gate.rectTransform,new(.5f,0),new(.5f,0),new(0,22),new(1250,35));
+
+        GameObject shop=Panel(canvas.transform,"Shop Page",new Color(.025f,.035f,.06f,.94f));
+        Rect((RectTransform)shop.transform,new(.5f,.5f),new(.5f,.5f),new(0,-15),new(860,520));
+        TextMeshProUGUI shopTitle=Text(shop.transform,"Shop Title","MINER'S SUPPLY SHOP",34,TextAlignmentOptions.Center,Amber);
+        Rect(shopTitle.rectTransform,new(.5f,1),new(.5f,1),new(0,-30),new(700,55));
+        TextMeshProUGUI status=Text(shop.transform,"Shop Status","Potions restore one heart.",20,TextAlignmentOptions.Center,Color.white);
+        Rect(status.rectTransform,new(.5f,0),new(.5f,0),new(0,28),new(760,45));
+        MineShopController controller=canvas.gameObject.AddComponent<MineShopController>();
+        Button buyLife=CreateActionButton(shop.transform,"Buy Life",$"EXTRA LIFE  —  {GameProgress.ExtraLifePrice} GREEN GEMS",new Vector2(0,110),controller.BuyExtraLife);
+        CreateActionButton(shop.transform,"Buy Potion",$"HEALTH POTION (+1 HEART)  —  {GameProgress.HealthPotionPrice} GREEN GEMS",new Vector2(0,10),controller.BuyHealthPotion);
+        CreateActionButton(shop.transform,"Buy Heart",$"+1 HEART CAPACITY  —  {GameProgress.HeartUpgradePrice} GREEN GEMS",new Vector2(0,-90),controller.BuyHeartUpgrade);
+
+        GameObject controls=Panel(canvas.transform,"Controller Mapping Page",new Color(.025f,.035f,.06f,.96f));
+        Rect((RectTransform)controls.transform,new(.5f,.5f),new(.5f,.5f),new(0,-15),new(1120,650));
+        TextMeshProUGUI controlsTitle=Text(controls.transform,"Controls Title","CONTROLLER BUTTON MAPPING",34,TextAlignmentOptions.Center,Amber);
+        Rect(controlsTitle.rectTransform,new(.5f,1),new(.5f,1),new(0,-28),new(900,50));
+        TextMeshProUGUI controllerName=Text(controls.transform,"Active Controller","ACTIVE CONTROLLER",19,TextAlignmentOptions.Center,new Color32(130,255,165,255));
+        Rect(controllerName.rectTransform,new(.5f,1),new(.5f,1),new(0,-82),new(900,38));
+        TextMeshProUGUI controlsHelp=Text(controls.transform,"Mapping Help",
+            "SELECT AN ACTION, RELEASE THE SUBMIT BUTTON, THEN PRESS ITS NEW CONTROLLER BUTTON.\n"+
+            "STICK / D-PAD MOVEMENT, KEYBOARD, AND UI NAVIGATION STAY FIXED.  LOGITECH F310: X MODE IS RECOMMENDED.",
+            16,TextAlignmentOptions.Center,Color.white);
+        Rect(controlsHelp.rectTransform,new(.5f,1),new(.5f,1),new(0,-126),new(1020,66));
+        TextMeshProUGUI mappingStatus=Text(controls.transform,"Mapping Status",
+            "MAPPINGS SAVE AUTOMATICALLY FOR EACH CONTROLLER MODEL.",16,TextAlignmentOptions.Center,new Color32(205,216,230,255));
+        Rect(mappingStatus.rectTransform,new(.5f,0),new(.5f,0),new(0,25),new(1020,44));
+
+        MineControlsController mappings=controls.AddComponent<MineControlsController>();
+        Button run=CreateActionButton(controls.transform,"Map Run Button","RUN",new Vector2(-270,95),mappings.RebindRun);
+        Button jump=CreateActionButton(controls.transform,"Map Jump Button","JUMP / PARACHUTE",new Vector2(270,95),mappings.RebindJump);
+        Button interact=CreateActionButton(controls.transform,"Map Interact Button","INTERACT",new Vector2(-270,15),mappings.RebindInteract);
+        Button potion=CreateActionButton(controls.transform,"Map Potion Button","HEALTH POTION",new Vector2(270,15),mappings.RebindPotion);
+        Button pauseButton=CreateActionButton(controls.transform,"Map Pause Button","PAUSE",new Vector2(-270,-65),mappings.RebindPause);
+        Button home=CreateActionButton(controls.transform,"Map Home Button","RETURN TO SHOP",new Vector2(270,-65),mappings.RebindHome);
+        Button restore=CreateActionButton(controls.transform,"Restore Default Mappings Button","RESTORE DEFAULTS FOR THIS CONTROLLER",new Vector2(0,-165),mappings.RestoreDefaults);
+        mappings.Configure(controllerName,mappingStatus,run,jump,interact,potion,pauseButton,home,restore);
+
+        CreateActionButton(canvas.transform,"Levels Tab","LEVELS",new Vector2(-300,-495),controller.ShowLevels);
+        CreateActionButton(canvas.transform,"Shop Tab","SHOP",new Vector2(0,-495),controller.ShowShop);
+        CreateActionButton(canvas.transform,"Controls Tab","CONTROLS",new Vector2(300,-495),controller.ShowControls);
+        controller.Configure(levels,shop,controls,balance,status,firstLevelSelection,buyLife.gameObject,run.gameObject);
+        controller.ShowLevels();
+        CreateEventSystem(firstLevelSelection);
+        EditorSceneManager.SaveScene(scene,OverviewPath);
     }
 
     private static void BuildGameOver(Sprite background)

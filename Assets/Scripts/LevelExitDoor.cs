@@ -6,7 +6,8 @@ using UnityEngine.SceneManagement;
 [RequireComponent(typeof(Collider2D))]
 public sealed class LevelExitDoor : MonoBehaviour
 {
-    public const string ExitPrompt = "PRESS X / UP / W TO EXIT LEVEL";
+    public static string ExitPrompt =>
+        $"PRESS {MineInput.GetControllerBindingDisplayName(MineButtonAction.Interact)} / UP / W TO EXIT LEVEL";
 
     [SerializeField] private string destinationScene = "DungeonOverview";
     [SerializeField, Min(0.2f)] private float entranceSeconds = 0.9f;
@@ -101,6 +102,9 @@ public sealed class LevelExitDoor : MonoBehaviour
     private IEnumerator EnterDoorRoutine(HeroMovement hero)
     {
         hero.SetInputLocked(true);
+        // Door entry owns the intentional fade. Cancel any in-progress damage
+        // flash first so it cannot overwrite the cutscene opacity.
+        hero.GetComponent<PlayerHealth>()?.RestoreDamagePresentation();
         Rigidbody2D body = hero.GetComponent<Rigidbody2D>();
         Collider2D bodyCollider = hero.GetComponent<Collider2D>();
         Animator animator = hero.GetComponent<Animator>();
@@ -126,7 +130,8 @@ public sealed class LevelExitDoor : MonoBehaviour
             elapsed += Time.deltaTime;
             float t = Mathf.SmoothStep(0f, 1f, elapsed / entranceSeconds);
             hero.transform.position = Vector3.Lerp(start, destination, t);
-            if (renderer != null) renderer.color = new Color(original.r, original.g, original.b, 1f - t);
+            if (renderer != null)
+                renderer.color = new Color(original.r, original.g, original.b, original.a * (1f - t));
             yield return null;
         }
 

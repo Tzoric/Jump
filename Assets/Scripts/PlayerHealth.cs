@@ -23,6 +23,8 @@ public sealed class PlayerHealth : MonoBehaviour
     private Rigidbody2D body;
     private HeroMovement movement;
     private SpriteRenderer spriteRenderer;
+    private Color spriteRestColor = Color.white;
+    private Coroutine damageFlashRoutine;
     private Vector3 respawnPosition;
     private int currentHealth;
     private float invulnerableUntil;
@@ -47,6 +49,7 @@ public sealed class PlayerHealth : MonoBehaviour
         spriteRenderer = outfit != null && outfit.VisualRenderer != null
             ? outfit.VisualRenderer
             : GetComponent<SpriteRenderer>();
+        if (spriteRenderer != null) spriteRestColor = spriteRenderer.color;
         respawnPosition = transform.position;
         maxHealth = GameProgress.MaxHearts;
         currentHealth = maxHealth;
@@ -60,6 +63,10 @@ public sealed class PlayerHealth : MonoBehaviour
             return false;
         }
 
+        // A previous flash can still be inside its final WaitForSeconds after the
+        // invulnerability clock has expired. End it before another hit so the new
+        // routine never records a temporary translucent color as the rest color.
+        RestoreDamagePresentation();
         currentHealth = Mathf.Max(0, currentHealth - amount);
         invulnerableUntil = Time.time + invulnerabilitySeconds;
 
@@ -76,9 +83,13 @@ public sealed class PlayerHealth : MonoBehaviour
         {
             StartCoroutine(RespawnRoutine());
         }
+        else if (spriteRenderer != null && invulnerabilitySeconds > 0f)
+        {
+            damageFlashRoutine = StartCoroutine(DamageFlashRoutine());
+        }
         else
         {
-            StartCoroutine(DamageFlashRoutine());
+            RestoreSpriteColor();
         }
 
         return true;
@@ -132,6 +143,17 @@ public sealed class PlayerHealth : MonoBehaviour
         return true;
     }
 
+    public void RestoreDamagePresentation()
+    {
+        if (damageFlashRoutine != null)
+        {
+            StopCoroutine(damageFlashRoutine);
+            damageFlashRoutine = null;
+        }
+
+        RestoreSpriteColor();
+    }
+
     private IEnumerator DamageFlashRoutine()
     {
         if (spriteRenderer == null)
@@ -139,20 +161,22 @@ public sealed class PlayerHealth : MonoBehaviour
             yield break;
         }
 
-        Color original = spriteRenderer.color;
         while (IsInvulnerable && !respawning)
         {
-            spriteRenderer.color = new Color(original.r, original.g, original.b, 0.35f);
+            spriteRenderer.color = new Color(spriteRestColor.r, spriteRestColor.g, spriteRestColor.b,
+                spriteRestColor.a * 0.35f);
             yield return new WaitForSeconds(0.08f);
-            spriteRenderer.color = original;
+            RestoreSpriteColor();
             yield return new WaitForSeconds(0.08f);
         }
 
-        spriteRenderer.color = original;
+        RestoreSpriteColor();
+        damageFlashRoutine = null;
     }
 
     private IEnumerator RespawnRoutine()
     {
+        RestoreDamagePresentation();
         respawning = true;
         RespawnCount++;
         bool hasAnotherLife = GameProgress.ConsumeLife();
@@ -184,7 +208,7 @@ public sealed class PlayerHealth : MonoBehaviour
         if (spriteRenderer != null)
         {
             spriteRenderer.enabled = true;
-            spriteRenderer.color = Color.white;
+            RestoreSpriteColor();
         }
 
         if (movement != null)
@@ -194,6 +218,16 @@ public sealed class PlayerHealth : MonoBehaviour
 
         respawning = false;
         RefreshDisplay();
+    }
+
+    private void RestoreSpriteColor()
+    {
+        if (spriteRenderer != null) spriteRenderer.color = spriteRestColor;
+    }
+
+    private void OnDisable()
+    {
+        RestoreDamagePresentation();
     }
 
     private void RefreshDisplay()

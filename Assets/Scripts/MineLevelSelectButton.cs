@@ -23,10 +23,20 @@ public sealed class MineLevelSelectButton : MonoBehaviour
         Refresh();
     }
 
-    private void OnEnable() => Refresh();
+    private void OnEnable()
+    {
+        GameProgress.LevelAccessChanged += Refresh;
+        Refresh();
+    }
+
+    private void OnDisable()
+    {
+        GameProgress.LevelAccessChanged -= Refresh;
+    }
 
     private void OnDestroy()
     {
+        GameProgress.LevelAccessChanged -= Refresh;
         if (button != null) button.onClick.RemoveListener(LoadLevel);
     }
 
@@ -56,6 +66,9 @@ public sealed class MineLevelSelectButton : MonoBehaviour
     private void LoadLevel()
     {
         if (GameProgress.IsLevelUnlocked(levelNumber) && !string.IsNullOrWhiteSpace(targetScene))
+        {
+            if (GameProgress.PlaytestAccessEnabled) GameProgress.BeginPlaytestRun();
             SceneManager.LoadScene(targetScene);
+        }
     }
 }

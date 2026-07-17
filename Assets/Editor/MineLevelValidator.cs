@@ -7,6 +7,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.SceneManagement;
 
@@ -20,6 +21,7 @@ public static class MineLevelValidator
     private const string DiagonalBackdropArt = "Assets/Art/Generated/MineDiagonalBronzeBackdrop.png";
     private const string ClosedChestArt = "Assets/Art/Generated/BronzeRewardChest.png";
     private const string OpenChestArt = "Assets/Art/Generated/BronzeRewardChestOpen.png";
+    private const string SpikeArt = "Assets/Art/Generated/BronzeSpike.png";
 
     private enum ShaftDirection
     {
@@ -98,14 +100,35 @@ public static class MineLevelValidator
         Require(Mathf.Approximately(
             RewardChest.BlueGemChance + RewardChest.PotionChance + RewardChest.ExtraLifeChance, 1f),
             "Chest reward chances must total 100%.");
-        Require(RewardChest.OpenPrompt.Contains("X") && RewardChest.OpenPrompt.Contains("UP") &&
-                RewardChest.OpenPrompt.Contains("W"),
-            "Chest interaction instructions must identify controller X and keyboard Up/W.");
-        Require(MineInput.ControllerRunButton == "A" && MineInput.ControllerJumpButton == "B" &&
-                MineInput.ControllerInteractButton == "X" && MineInput.ControllerPotionButton == "Y" &&
-                MineInput.ControllerPauseButton == "START" && MineInput.ControllerHomeButton == "BACK",
-            "The centralized Logitech/XInput controller contract must remain A run, B jump, X interact, " +
-            "Y potion, Start pause, and Back home.");
+        Require(RewardChest.OpenPrompt.Contains("UP") && RewardChest.OpenPrompt.Contains("W") &&
+                RewardChest.OpenPrompt.Contains("OPEN CHEST"),
+            "Chest instructions must show the current controller binding and fixed keyboard Up/W controls.");
+
+        MineButtonAction[] actions = MineInput.GetBindableActions();
+        Require(actions.Length == MineInput.BindableActionCount && actions.Distinct().Count() == 6,
+            "The centralized input contract needs six distinct rebindable controller actions.");
+        var expectedDefaults = new Dictionary<MineButtonAction, string>
+        {
+            { MineButtonAction.Run, "<Gamepad>/buttonSouth" },
+            { MineButtonAction.Jump, "<Gamepad>/buttonEast" },
+            { MineButtonAction.Interact, "<Gamepad>/buttonWest" },
+            { MineButtonAction.Potion, "<Gamepad>/buttonNorth" },
+            { MineButtonAction.Pause, "<Gamepad>/start" },
+            { MineButtonAction.Home, "<Gamepad>/select" }
+        };
+        foreach (KeyValuePair<MineButtonAction, string> expected in expectedDefaults)
+        {
+            Require(string.Equals(MineInput.GetDefaultControllerBindingPath(expected.Key), expected.Value,
+                    StringComparison.OrdinalIgnoreCase),
+                $"Default {expected.Key} controller path must remain {expected.Value}.");
+        }
+
+        InputActionAsset mappingAsset = Resources.Load<InputActionAsset>("MineControllerActions");
+        Require(mappingAsset != null, "The persistent controller mapping action asset is missing from Resources.");
+        InputActionMap mappingMap = mappingAsset.FindActionMap("MineButtons", true);
+        Require(mappingMap.actions.Count == MineInput.BindableActionCount &&
+                mappingMap.bindings.All(binding => binding.id != Guid.Empty),
+            "Controller mapping actions need six stable actions and persistent binding GUIDs.");
     }
 
     private static void ValidatePlatformArtwork()
@@ -190,8 +213,53 @@ public static class MineLevelValidator
         Require(camera.gameObject.GetComponent<AudioListener>() != null, "Overview camera needs its AudioListener.");
         Require(camera.targetTexture == null && camera.targetDisplay == 0, "Overview camera must render to Display 1.");
         MineShopController[] shops = SceneComponents<MineShopController>();
-        Require(shops.Length == 1 && shops[0].LevelPanel != null && shops[0].ShopPanel != null,
-            "Overview shop is missing, duplicated, or lacks its level/shop panels.");
+        Require(shops.Length == 1 && shops[0].LevelPanel != null && shops[0].ShopPanel != null &&
+                shops[0].ControlsPanel != null,
+            "Overview is missing its distinct Levels, Shop, or Controls page.");
+        MineShopController shop = shops[0];
+        Require(shop.LevelPanel != shop.ShopPanel && shop.LevelPanel != shop.ControlsPanel &&
+                shop.ShopPanel != shop.ControlsPanel && shop.LevelPanel.activeSelf &&
+                !shop.ShopPanel.activeSelf && !shop.ControlsPanel.activeSelf,
+            "Overview must serialize with only the distinct Levels page visible.");
+
+        MineControlsController[] mappings = SceneComponents<MineControlsController>();
+        Require(mappings.Length == 1 && mappings[0].gameObject == shop.ControlsPanel,
+            "Overview needs exactly one controller mapping controller on its Controls page.");
+        MineControlsController mapping = mappings[0];
+        UnityEngine.UI.Button[] mappingButtons =
+        {
+            mapping.RunButton, mapping.JumpButton, mapping.InteractButton,
+            mapping.PotionButton, mapping.PauseButton, mapping.HomeButton
+        };
+        Require(mappingButtons.All(button => button != null) &&
+                mappingButtons.Distinct().Count() == MineInput.BindableActionCount &&
+                mapping.RestoreDefaultsButton != null && mapping.ControllerDisplay != null &&
+                mapping.StatusDisplay != null && shop.ControlsDefaultSelection == mapping.RunButton.gameObject,
+            "Controls page needs six distinct mapping rows, controller/status labels, Restore Defaults, and Run as its first selection.");
+        Require(HasPersistentListener(mapping.RunButton, mapping, nameof(MineControlsController.RebindRun)) &&
+                HasPersistentListener(mapping.JumpButton, mapping, nameof(MineControlsController.RebindJump)) &&
+                HasPersistentListener(mapping.InteractButton, mapping, nameof(MineControlsController.RebindInteract)) &&
+                HasPersistentListener(mapping.PotionButton, mapping, nameof(MineControlsController.RebindPotion)) &&
+                HasPersistentListener(mapping.PauseButton, mapping, nameof(MineControlsController.RebindPause)) &&
+                HasPersistentListener(mapping.HomeButton, mapping, nameof(MineControlsController.RebindHome)) &&
+                HasPersistentListener(mapping.RestoreDefaultsButton, mapping, nameof(MineControlsController.RestoreDefaults)),
+            "Every mapping row and Restore Defaults button must have its persistent listener.");
+
+        string controlsCopy = string.Join(" ", shop.ControlsPanel
+            .GetComponentsInChildren<TextMeshProUGUI>(true).Select(label => label.text)).ToUpperInvariant();
+        Require(controlsCopy.Contains("BUTTON MAPPING") && controlsCopy.Contains("STICK / D-PAD") &&
+                controlsCopy.Contains("KEYBOARD") && controlsCopy.Contains("UI NAVIGATION") &&
+                controlsCopy.Contains("X MODE") && controlsCopy.Contains("EACH CONTROLLER MODEL"),
+            "Controls page must explain mapping, fixed movement/keyboard/UI controls, F310 X mode, and per-model saves.");
+
+        UnityEngine.UI.Button[] overviewButtons = SceneComponents<UnityEngine.UI.Button>();
+        Require(overviewButtons.Any(button => button.name == "Levels Tab" &&
+                    HasPersistentListener(button, shop, nameof(MineShopController.ShowLevels))) &&
+                overviewButtons.Any(button => button.name == "Shop Tab" &&
+                    HasPersistentListener(button, shop, nameof(MineShopController.ShowShop))) &&
+                overviewButtons.Any(button => button.name == "Controls Tab" &&
+                    HasPersistentListener(button, shop, nameof(MineShopController.ShowControls))),
+            "Overview needs wired Levels, Shop, and Controls tabs.");
         ValidateInputSystemEventSystem("Overview", true);
 
         MineLevelSelectButton[] nodes = SceneComponents<MineLevelSelectButton>();
@@ -329,6 +397,8 @@ public static class MineLevelValidator
         SpriteRenderer miner = renderers.FirstOrDefault(renderer =>
             renderer.sprite != null && NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(MinerArt));
         Require(miner != null && miner.enabled, $"{level.SceneName} must use the completely remade miner sprite.");
+        Require(miner != null && Mathf.Approximately(miner.color.a, 1f),
+            $"{level.SceneName} miner body must start fully opaque; damage flashing restores this authored alpha.");
         Require(outfit.VisualRenderer == miner, $"{level.SceneName} miner outfit is not driving the remade body renderer.");
         CharacterOutfitDefinition definition = outfit.Outfit;
         Require(definition != null && definition.CharacterIdentity == "Main Hero" && definition.OutfitId == "bronze_miner",
@@ -368,9 +438,9 @@ public static class MineLevelValidator
         Collider2D doorTrigger = door.GetComponent<Collider2D>();
         Require(doorTrigger != null && doorTrigger.enabled && doorTrigger.isTrigger,
             $"{level.SceneName} exit door needs an enabled proximity trigger for Up/W interaction.");
-        Require(LevelExitDoor.ExitPrompt.Contains("X") && LevelExitDoor.ExitPrompt.Contains("UP") &&
-                LevelExitDoor.ExitPrompt.Contains("W") && LevelExitDoor.ExitPrompt.Contains("EXIT"),
-            $"{level.SceneName} exit prompt must clearly identify controller X and keyboard Up/W.");
+        Require(LevelExitDoor.ExitPrompt.Contains("UP") && LevelExitDoor.ExitPrompt.Contains("W") &&
+                LevelExitDoor.ExitPrompt.Contains("EXIT"),
+            $"{level.SceneName} exit prompt must identify the current controller binding and keyboard Up/W.");
 
         Transform[] foundations = SceneTransforms()
             .Where(transform => transform.name == "Exit Door Foundation (Required)").ToArray();
@@ -394,9 +464,14 @@ public static class MineLevelValidator
 
         TextMeshProUGUI[] labels = menu.PausePanel.GetComponentsInChildren<TextMeshProUGUI>(true);
         string combinedLabels = string.Join(" ", labels.Select(label => label.text));
-        Require(combinedLabels.Contains("PAUSED") && combinedLabels.Contains("START") &&
-                combinedLabels.Contains("BACK") && combinedLabels.Contains("SHOP"),
-            $"{level.SceneName} pause panel must explain Start resume and Back return-to-shop controls.");
+        Require(combinedLabels.Contains("PAUSED") && combinedLabels.Contains("SHOP"),
+            $"{level.SceneName} pause panel must explain resume and return-to-shop behavior.");
+
+        MineControlHintDisplay[] controlHints = SceneComponents<MineControlHintDisplay>();
+        Require(controlHints.Length == 1 && controlHints[0].LevelInstructions != null &&
+                controlHints[0].PauseInstructions != null &&
+                controlHints[0].PauseInstructions.transform.IsChildOf(menu.PausePanel.transform),
+            $"{level.SceneName} needs one dynamic HUD/pause binding display so remapped buttons stay accurate.");
 
         UnityEngine.UI.Button[] buttons = menu.PausePanel.GetComponentsInChildren<UnityEngine.UI.Button>(true);
         Require(buttons.Any(button => HasPersistentListener(button, menu, nameof(MineLevelMenuController.ResumeGame))) &&
@@ -459,6 +534,7 @@ public static class MineLevelValidator
     private static void ValidateSpikes(LevelExpectation level, HeroMovement hero,
         AutomatedPlaytestWaypoint[] waypoints)
     {
+        Physics2D.SyncTransforms();
         DamageZone[] spikes = SceneComponents<DamageZone>()
             .Where(zone => zone.name.IndexOf("spike", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
         if (level.Number >= 2)
@@ -470,6 +546,46 @@ public static class MineLevelValidator
         {
             Require(SerializedInt(spike, "damage") == 1,
                 $"{level.SceneName} spike '{spike.name}' must remove exactly one heart per hit.");
+
+            PolygonCollider2D polygon = spike.GetComponent<PolygonCollider2D>();
+            Require(polygon != null && polygon.enabled && polygon.isTrigger &&
+                    spike.GetComponents<Collider2D>().Length == 1 && spike.GetComponent<BoxCollider2D>() == null,
+                $"{level.SceneName} spike '{spike.name}' must use one enabled polygon trigger, not an air-filling box.");
+            Require(polygon.pathCount == SpikeHitboxGeometry.PathCount,
+                $"{level.SceneName} spike '{spike.name}' needs one separate path for each of its three visible teeth.");
+            for (int pathIndex = 0; pathIndex < SpikeHitboxGeometry.PathCount; pathIndex++)
+            {
+                Vector2[] points = polygon.GetPath(pathIndex);
+                Require(points.Length == SpikeHitboxGeometry.PointsPerPath,
+                    $"{level.SceneName} spike '{spike.name}' path {pathIndex} must be triangular.");
+                for (int pointIndex = 0; pointIndex < points.Length; pointIndex++)
+                {
+                    Require(Vector2.Distance(points[pointIndex],
+                                SpikeHitboxGeometry.ExpectedPoint(pathIndex, pointIndex)) <= .002f,
+                        $"{level.SceneName} spike '{spike.name}' collider exceeds the inset visible-tooth geometry.");
+                }
+            }
+
+            SpriteRenderer renderer = spike.GetComponent<SpriteRenderer>();
+            Require(renderer != null && renderer.sprite != null &&
+                    NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(SpikeArt) &&
+                    Mathf.Abs(renderer.sprite.pixelsPerUnit - 24f) <= .01f &&
+                    renderer.sprite.rect.size == new Vector2(40f,24f) &&
+                    Vector2.Distance(renderer.sprite.pivot,new Vector2(20f,12f)) <= .01f,
+                $"{level.SceneName} spike '{spike.name}' must use the centered 40x24, 24-PPU BronzeSpike art.");
+
+            float[] toothCenters = { -.5208333f, .0208333f, .5625f };
+            foreach (float center in toothCenters)
+            {
+                Require(polygon.OverlapPoint(spike.transform.TransformPoint(new Vector2(center,0f))),
+                    $"{level.SceneName} spike '{spike.name}' collider misses a visible tooth center.");
+            }
+            float[] transparentValleys = { -.25f, .2916667f };
+            foreach (float valley in transparentValleys)
+            {
+                Require(!polygon.OverlapPoint(spike.transform.TransformPoint(new Vector2(valley,0f))),
+                    $"{level.SceneName} spike '{spike.name}' still damages transparent air between teeth.");
+            }
         }
 
         if (level.Number == 10)

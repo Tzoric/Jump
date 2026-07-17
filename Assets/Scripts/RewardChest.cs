@@ -7,7 +7,8 @@ public sealed class RewardChest : MonoBehaviour
     public const float BlueGemChance = 0.50f;
     public const float PotionChance = 0.45f;
     public const float ExtraLifeChance = 0.05f;
-    public const string OpenPrompt = "PRESS X / UP / W TO OPEN CHEST";
+    public static string OpenPrompt =>
+        $"PRESS {MineInput.GetControllerBindingDisplayName(MineButtonAction.Interact)} / UP / W TO OPEN CHEST";
     public const string LockedPrompt = "CHEST LOCKED - BRONZE KEY REQUIRED";
     public const string OpenedPrompt = "CHEST ALREADY OPENED";
 
@@ -100,7 +101,8 @@ public sealed class RewardChest : MonoBehaviour
     }
 
     // Kept as a small compatibility wrapper for any authored events or tests that
-    // already call Open directly. Normal gameplay uses TryInteract after X/Up/W.
+    // already call Open directly. Normal gameplay uses TryInteract after the
+    // currently mapped controller interaction button or keyboard Up/W.
     public void Open(MineRunInventory inventory, float roll) => TryInteract(inventory, roll);
 
     private void ShowInteractionPrompt(MineRunInventory inventory)
