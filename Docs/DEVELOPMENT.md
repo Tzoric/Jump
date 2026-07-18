@@ -17,6 +17,7 @@ For rapid testing, the Levels page contains a hidden, session-only **Foreman's M
 ## Project conventions
 
 - The current editor baseline is Unity 6.3 LTS, `6000.3.20f1`. Open, build, serialize, and validate the project with that version unless a later migration deliberately updates `ProjectSettings/ProjectVersion.txt` and this guide together.
+- Unity's Visual Studio integration now generates the SDK-style `Jump.slnx`. Install the x64 .NET 9 SDK `9.0.200` or newer before opening it in VS Code; this workstation was verified with `9.0.316`. The runtime alone is not sufficient. After an SDK update, restart VS Code and confirm `dotnet sln .\Jump.slnx list` succeeds.
 - Put gameplay scripts in `Assets/Scripts` and editor/build tools in `Assets/Editor`.
 - Put playable scenes in `Assets/Scenes` and enable the overview followed by Levels 1-12 in progression order.
 - Build reusable objects as prefabs instead of duplicating configured scene objects.
