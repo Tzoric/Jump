@@ -410,6 +410,7 @@ public static class MineLevelBuilder
                 case MineRouteSectionType.Horizontal:
                     cursor = BuildLevel12Horizontal(section, root, art, cursor, ref waypointOrder,
                         routePoints, index,
+                        index > 0 && sectionOrder[index - 1] == MineRouteSectionType.VerticalUp,
                         index + 1 < sectionOrder.Length &&
                         sectionOrder[index + 1] == MineRouteSectionType.VerticalDown,
                         out pathLength);
@@ -576,7 +577,7 @@ public static class MineLevelBuilder
 
     private static Vector2 BuildLevel12Horizontal(Transform section, Transform levelRoot, ArtSet art,
         Vector2 entry, ref int waypointOrder, ICollection<Vector2> routePoints, int sectionIndex,
-        bool leadsIntoDescent, out float pathLength)
+        bool followsVerticalClimb, bool leadsIntoDescent, out float pathLength)
     {
         Vector2 previousPosition = entry;
         Transform existingEntrance = sectionIndex == 0 && section.parent != null
@@ -585,7 +586,8 @@ public static class MineLevelBuilder
         GameObject previousPlatform = existingEntrance != null
             ? existingEntrance.gameObject
             : CreatePlatform(section, art.Platform,
-                $"Mixed Horizontal Hub {sectionIndex + 1:00}", entry, 6.5f, 0f);
+                $"Mixed Horizontal Hub {sectionIndex + 1:00}", entry,
+                followsVerticalClimb ? 8f : 6.5f, 0f);
         pathLength = 0f;
         for (int step = 0; step < 7; step++)
         {
@@ -604,7 +606,14 @@ public static class MineLevelBuilder
             // The last transition into a parachute shaft uses an overlapping launch
             // shelf instead of a lethal strip. This prevents the visually safe
             // approach from killing a player before they can step off the right edge.
-            if (!leadsIntoDescent || step < 6)
+            // The first gap after a vertical climb begins at the same ledge the
+            // player has just fought upward to reach. A shallow instant-death
+            // strip there punished an otherwise valid takeoff before the miner
+            // could clear the platform edge. The wider transition hub still
+            // requires a deliberate jump, while a missed jump falls naturally
+            // to the global off-route abyss instead of dying at ankle height.
+            bool safeVerticalTransition = followsVerticalClimb && step == 0;
+            if ((!leadsIntoDescent || step < 6) && !safeVerticalTransition)
             {
                 // The shallow trigger under the penultimate gap would otherwise
                 // protrude a few pixels into the following 18-unit-wide shaft.

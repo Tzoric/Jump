@@ -1133,19 +1133,34 @@ public static class MineLevelValidator
             "Level 12 descents need parachute-enabled airborne safe-lane waypoints around every major hazard.");
 
         FatalFallZone[] localPits = SceneComponents<FatalFallZone>().Where(zone =>
+            zone.gameObject.activeInHierarchy &&
             zone.name.IndexOf("Level 12 Local Bottomless Pit", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
         int horizontalToDescentTransitions = 0;
+        int verticalToHorizontalTransitions = 0;
         for (int index = 0; index + 1 < sections.Length; index++)
         {
             if (sections[index].SectionType == MineRouteSectionType.Horizontal &&
                 sections[index + 1].SectionType == MineRouteSectionType.VerticalDown)
                 horizontalToDescentTransitions++;
+            if (sections[index].SectionType == MineRouteSectionType.VerticalUp &&
+                sections[index + 1].SectionType == MineRouteSectionType.Horizontal)
+            {
+                verticalToHorizontalTransitions++;
+                BoxCollider2D transitionHub = sections[index + 1]
+                    .GetComponentsInChildren<BoxCollider2D>(true)
+                    .Single(collider => collider.name.IndexOf("Mixed Horizontal Hub",
+                        StringComparison.OrdinalIgnoreCase) >= 0);
+                Require(transitionHub.bounds.size.x >= 7.5f,
+                    $"Level 12 climb {sections[index].Order} needs a wide, nonlethal horizontal launch hub.");
+            }
         }
         int expectedLocalPits = sections.Count(section =>
-            section.SectionType == MineRouteSectionType.Horizontal) * 7 - horizontalToDescentTransitions;
+            section.SectionType == MineRouteSectionType.Horizontal) * 7 -
+            horizontalToDescentTransitions - verticalToHorizontalTransitions;
         Require(localPits.Length == expectedLocalPits &&
                 localPits.All(zone => zone.GetComponent<Collider2D>() is { isTrigger: true }),
-            "Each Level 12 horizontal gap needs fatal coverage except its visibly bridged parachute approach.");
+            "Each Level 12 horizontal gap needs fatal coverage except its parachute approach and " +
+            "the first jump after a vertical climb.");
 
         Collider2D[] descentCorridors = SceneComponents<ParachuteDescentZone>()
             .Select(zone => zone.GetComponent<Collider2D>())
