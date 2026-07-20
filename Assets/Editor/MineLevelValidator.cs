@@ -1529,11 +1529,11 @@ public static class MineLevelValidator
         string foregroundPanelPath=NormalizePath(ForegroundRockPanelArt);
         Require(rendererPaths.Contains(distantBackgroundPath) &&
                 rendererPaths.Contains(foregroundPanelPath),
-            "Silver cave must use the quiet distant-rock background and unified foreground nine-slice panel.");
+            "Silver cave must use the quiet distant-rock background and modular foreground rock tileset.");
         Require(themes[0].DistantBackgroundSprite!=null && themes[0].ForegroundRockPanelSprite!=null &&
                 NormalizePath(AssetDatabase.GetAssetPath(themes[0].DistantBackgroundSprite))==distantBackgroundPath &&
                 NormalizePath(AssetDatabase.GetAssetPath(themes[0].ForegroundRockPanelSprite))==foregroundPanelPath,
-            "Silver background and foreground rock panel must be assigned centrally on the dungeon theme.");
+            "Silver background and foreground rock tileset must be assigned centrally on the dungeon theme.");
 
         SpriteRenderer[] distantBackgrounds=sceneRenderers.Where(renderer=>renderer.sprite!=null &&
             NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite))==distantBackgroundPath).ToArray();
@@ -1543,17 +1543,19 @@ public static class MineLevelValidator
                 distantBackgrounds[0].GetComponentsInChildren<Collider2D>(true).Length==0,
             "Silver needs exactly one clearly named, fully non-collidable distant-rock background.");
 
-        SpriteRenderer[] foregroundPanels=sceneRenderers.Where(renderer=>renderer.sprite!=null &&
+        SpriteRenderer[] foregroundTiles=sceneRenderers.Where(renderer=>renderer.sprite!=null &&
             NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite))==foregroundPanelPath).ToArray();
-        Require(foregroundPanels.Length>=30 && foregroundPanels.All(renderer=>
-                renderer.drawMode==SpriteDrawMode.Tiled && renderer.transform.localRotation==Quaternion.identity &&
-                renderer.sprite.border.x>0f && renderer.sprite.border.y>0f &&
-                renderer.sprite.border.z>0f && renderer.sprite.border.w>0f),
-            "Every Silver foreground platform/wall must use the unrotated bordered panel; edge direction comes from the authored tile, not rotated corner pieces.");
-        Require(foregroundPanels.All(renderer=>
-                renderer.name.IndexOf("Corner",StringComparison.OrdinalIgnoreCase)<0 &&
-                renderer.name.IndexOf("Edge",StringComparison.OrdinalIgnoreCase)<0),
-            "Silver foreground rendering must not contain free-floating edge or corner decorations.");
+        string[] requiredTileNames={"SilverRock_Fill","SilverRock_TopLeft","SilverRock_TopMiddle",
+            "SilverRock_TopRight","SilverRock_LeftMiddle","SilverRock_RightMiddle",
+            "SilverRock_BottomLeft","SilverRock_BottomMiddle","SilverRock_BottomRight"};
+        HashSet<string> importedTileNames=AssetDatabase.LoadAllAssetsAtPath(ForegroundRockPanelArt)
+            .OfType<Sprite>().Select(sprite=>sprite.name).ToHashSet();
+        Require(foregroundTiles.Length>=70 && requiredTileNames.All(importedTileNames.Contains) &&
+                foregroundTiles.All(renderer=>renderer.transform.localRotation==Quaternion.identity),
+            "Silver foreground must use all nine unrotated modular rock slices; wall direction comes from explicit left/right tiles, never rotated decoration.");
+        Require(foregroundTiles.All(renderer=>
+                renderer.name.IndexOf("Corner",StringComparison.OrdinalIgnoreCase)<0),
+            "Silver foreground rendering must not contain free-floating corner decorations.");
 
         BoxCollider2D[] silverGround=SceneComponents<BoxCollider2D>().Where(collider=>
             !collider.isTrigger && collider.gameObject.layer==LayerMask.NameToLayer("Ground")).ToArray();
@@ -1563,14 +1565,21 @@ public static class MineLevelValidator
                 renderer.sprite!=null &&
                 NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite))==foregroundPanelPath);
             if(panel==null) return false;
-            Bounds visual=panel.bounds;
+            Bounds visual=collider.GetComponentsInChildren<SpriteRenderer>(true).Where(renderer=>renderer.sprite!=null &&
+                NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite))==foregroundPanelPath)
+                .Select(renderer=>renderer.bounds).Aggregate((combined,next)=>{combined.Encapsulate(next);return combined;});
             Bounds solid=collider.bounds;
             return visual.min.x<=solid.min.x+.05f && visual.max.x>=solid.max.x-.05f &&
                    visual.min.y<=solid.min.y+.05f && visual.max.y>=solid.max.y-.05f;
-        }), "Every solid Silver rock surface must be visually covered by the same foreground panel so collision is readable.");
-        Require(foregroundPanels.Count(renderer=>renderer.name.IndexOf("Single-Thickness",StringComparison.OrdinalIgnoreCase)>=0 &&
-                renderer.size.y<=1.25f)>=20,
-            "Silver rock tiles must support the route's single-thickness platforms without three-by-two corner assemblies or seams.");
+        }), "Every solid Silver rock surface must be covered by its modular foreground tile family so collision is readable.");
+        Require(foregroundTiles.Count(renderer=>renderer.name=="Single-Thickness Platform Middle" &&
+                renderer.drawMode==SpriteDrawMode.Tiled && renderer.size.y<=1.05f)>=20 &&
+                foregroundTiles.Count(renderer=>renderer.name.Contains("Single-Thickness Platform") &&
+                    renderer.drawMode==SpriteDrawMode.Simple)>=40,
+            "Silver rock tiles must build each single-thickness platform from one repeatable middle and two fixed end caps without compressed panel borders.");
+        Require(foregroundTiles.Any(renderer=>renderer.name=="Left-Facing Exposed Wall Edge") &&
+                foregroundTiles.Any(renderer=>renderer.name=="Right-Facing Exposed Wall Edge"),
+            "Silver shaft boundaries must use distinct left-facing and right-facing exposed wall tiles.");
 
         FakeWallReveal[] fakeWalls = SceneComponents<FakeWallReveal>();
         Require(fakeWalls.Length >= 1 && fakeWalls.All(wall =>

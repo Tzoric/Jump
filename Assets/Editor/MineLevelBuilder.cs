@@ -5,6 +5,7 @@ using TMPro;
 using UnityEditor;
 using UnityEditor.Events;
 using UnityEditor.SceneManagement;
+using UnityEditor.U2D.Sprites;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
@@ -141,6 +142,15 @@ public static class MineLevelBuilder
     private static Sprite rockCornerSprite;
     private static Sprite distantMineBackgroundSprite;
     private static Sprite foregroundRockPanelSprite;
+    private static Sprite silverRockFillSprite;
+    private static Sprite silverRockTopLeftSprite;
+    private static Sprite silverRockTopMiddleSprite;
+    private static Sprite silverRockTopRightSprite;
+    private static Sprite silverRockLeftMiddleSprite;
+    private static Sprite silverRockRightMiddleSprite;
+    private static Sprite silverRockBottomLeftSprite;
+    private static Sprite silverRockBottomMiddleSprite;
+    private static Sprite silverRockBottomRightSprite;
 
     private static DungeonVisualTheme CurrentTheme
     {
@@ -180,8 +190,7 @@ public static class MineLevelBuilder
         rockEdgeSprite = ImportSprite(RockEdgePath, 512f, false, true, true);
         rockCornerSprite = ImportSprite(RockCornerPath, 512f, false, false, true);
         distantMineBackgroundSprite = ImportSprite(DistantMineBackgroundPath, 256f, false, true, true);
-        foregroundRockPanelSprite = ImportNineSliceSprite(ForegroundRockPanelPath, 512f,
-            new Vector4(150f,230f,150f,150f));
+        foregroundRockPanelSprite = ImportSilverRockTileSet(ForegroundRockPanelPath,256f);
         Sprite polishedSpike = ImportSprite(PolishedSpikePath, 800f, false, false, true);
         Sprite cutGem = ImportSprite(CutGemPath, 800f, false, false, true);
         Sprite boundChest = ImportSprite(BoundChestPath, 600f, false, false, true);
@@ -1103,8 +1112,7 @@ public static class MineLevelBuilder
 
         if(UsesCollisionMatchedRockPanels())
         {
-            CreateCollisionMatchedRockSurface(go.transform,"Single-Thickness Rock Platform",
-                new Vector3(0f,-.28f,0f),new Vector2(width,1.2f),3,.58f);
+            CreateSilverSingleThicknessPlatform(go.transform,width);
             return go;
         }
 
@@ -1143,27 +1151,99 @@ public static class MineLevelBuilder
             theme.DungeonId==GameProgress.SilverDungeonId;
     }
 
-    private static SpriteRenderer CreateCollisionMatchedRockSurface(Transform parent,string name,
-        Vector3 localPosition,Vector2 size,int sortingOrder,float flakeDensityScale)
+    private static void CreateSilverSingleThicknessPlatform(Transform parent,float width)
     {
-        GameObject surface=new(name); surface.transform.SetParent(parent,false);
-        surface.transform.localPosition=localPosition;
-        SpriteRenderer renderer=surface.AddComponent<SpriteRenderer>();
-        renderer.sprite=foregroundRockPanelSprite;
-        renderer.drawMode=SpriteDrawMode.Tiled;
-        renderer.tileMode=SpriteTileMode.Continuous;
-        renderer.size=new Vector2(Mathf.Max(.7f,size.x),Mathf.Max(.7f,size.y));
-        renderer.sortingOrder=sortingOrder;
-        renderer.color=Color.white;
+        const float visualHeight=1f;
+        const float localY=-.28f;
+        float leftWidth=silverRockTopLeftSprite==null?.65f:silverRockTopLeftSprite.bounds.size.x;
+        float rightWidth=silverRockTopRightSprite==null?.65f:silverRockTopRightSprite.bounds.size.x;
+        float innerWidth=Mathf.Max(.2f,width-leftWidth-rightWidth);
+
+        SpriteRenderer middle=CreateRockTileRenderer(parent,"Single-Thickness Platform Middle",
+            silverRockTopMiddleSprite,new Vector3((leftWidth-rightWidth)*.5f,localY,0f),3);
+        middle.drawMode=SpriteDrawMode.Tiled;
+        middle.tileMode=SpriteTileMode.Continuous;
+        middle.size=new Vector2(innerWidth,visualHeight);
+
+        SpriteRenderer left=CreateRockTileRenderer(parent,"Single-Thickness Platform Left Cap",
+            silverRockTopLeftSprite,new Vector3(-width*.5f+leftWidth*.5f,localY,-.01f),4);
+        FitRockTileHeight(left,visualHeight);
+        SpriteRenderer right=CreateRockTileRenderer(parent,"Single-Thickness Platform Right Cap",
+            silverRockTopRightSprite,new Vector3(width*.5f-rightWidth*.5f,localY,-.01f),4);
+        FitRockTileHeight(right,visualHeight);
+
         DungeonVisualTheme theme=CurrentTheme;
         if(theme!=null)
         {
-            int seed=Mathf.RoundToInt(parent.position.x*79f+parent.position.y*131f+
-                size.x*43f+size.y*61f);
-            surface.AddComponent<ThemedMetalFlakes>().Configure(theme,renderer,
-                flakeDensityScale,seed);
+            int seed=Mathf.RoundToInt(parent.position.x*79f+parent.position.y*131f+width*43f);
+            middle.gameObject.AddComponent<ThemedMetalFlakes>().Configure(theme,middle,.58f,seed);
         }
+    }
+
+    private static void CreateSilverVerticalWallSurface(Transform parent,string wallName,Vector2 size)
+    {
+        bool wallOnLeft=wallName.IndexOf("Left",System.StringComparison.OrdinalIgnoreCase)>=0;
+        Sprite edgeSprite=wallOnLeft?silverRockRightMiddleSprite:silverRockLeftMiddleSprite;
+        Sprite topCap=wallOnLeft?silverRockTopRightSprite:silverRockTopLeftSprite;
+        Sprite bottomCap=wallOnLeft?silverRockBottomRightSprite:silverRockBottomLeftSprite;
+        float edgeWidth=edgeSprite==null?.65f:edgeSprite.bounds.size.x;
+        float edgeX=(wallOnLeft?1f:-1f)*(size.x*.5f-edgeWidth*.5f);
+
+        SpriteRenderer fill=CreateRockTileRenderer(parent,"Solid Rock Wall Interior",
+            silverRockFillSprite,Vector3.zero,2);
+        fill.drawMode=SpriteDrawMode.Tiled;
+        fill.tileMode=SpriteTileMode.Continuous;
+        fill.size=size;
+
+        float topHeight=topCap==null?1f:topCap.bounds.size.y;
+        float bottomHeight=bottomCap==null?.9f:bottomCap.bounds.size.y;
+        float middleHeight=Mathf.Max(.2f,size.y-topHeight-bottomHeight);
+        SpriteRenderer edge=CreateRockTileRenderer(parent,
+            wallOnLeft?"Right-Facing Exposed Wall Edge":"Left-Facing Exposed Wall Edge",
+            edgeSprite,new Vector3(edgeX,(bottomHeight-topHeight)*.5f,-.01f),4);
+        edge.drawMode=SpriteDrawMode.Tiled;
+        edge.tileMode=SpriteTileMode.Continuous;
+        edge.size=new Vector2(edgeWidth,middleHeight);
+
+        SpriteRenderer top=CreateRockTileRenderer(parent,"Directional Wall Top Cap",topCap,
+            new Vector3(edgeX,size.y*.5f-topHeight*.5f,-.02f),5);
+        SpriteRenderer bottom=CreateRockTileRenderer(parent,"Directional Wall Bottom Cap",bottomCap,
+            new Vector3(edgeX,-size.y*.5f+bottomHeight*.5f,-.02f),5);
+        if(top!=null && top.sprite!=null) FitRockTileWidth(top,edgeWidth);
+        if(bottom!=null && bottom.sprite!=null) FitRockTileWidth(bottom,edgeWidth);
+
+        DungeonVisualTheme theme=CurrentTheme;
+        if(theme!=null)
+        {
+            int seed=Mathf.RoundToInt(parent.position.x*79f+parent.position.y*131f+size.y*61f);
+            fill.gameObject.AddComponent<ThemedMetalFlakes>().Configure(theme,fill,.42f,seed);
+        }
+    }
+
+    private static SpriteRenderer CreateRockTileRenderer(Transform parent,string name,Sprite sprite,
+        Vector3 localPosition,int sortingOrder)
+    {
+        GameObject tile=new(name); tile.transform.SetParent(parent,false);
+        tile.transform.localPosition=localPosition;
+        SpriteRenderer renderer=tile.AddComponent<SpriteRenderer>();
+        renderer.sprite=sprite==null?foregroundRockPanelSprite:sprite;
+        renderer.sortingOrder=sortingOrder;
+        renderer.color=Color.white;
         return renderer;
+    }
+
+    private static void FitRockTileHeight(SpriteRenderer renderer,float height)
+    {
+        if(renderer==null||renderer.sprite==null) return;
+        float spriteHeight=Mathf.Max(.01f,renderer.sprite.bounds.size.y);
+        renderer.transform.localScale=new Vector3(1f,height/spriteHeight,1f);
+    }
+
+    private static void FitRockTileWidth(SpriteRenderer renderer,float width)
+    {
+        if(renderer==null||renderer.sprite==null) return;
+        float spriteWidth=Mathf.Max(.01f,renderer.sprite.bounds.size.x);
+        renderer.transform.localScale=new Vector3(width/spriteWidth,1f,1f);
     }
 
     private static SpriteRenderer CreateRockEdgeBand(Transform parent,string name,Vector3 localPosition,
@@ -1440,8 +1520,7 @@ public static class MineLevelBuilder
         go.AddComponent<BoxCollider2D>().size=size;
         if(UsesCollisionMatchedRockPanels())
         {
-            CreateCollisionMatchedRockSurface(go.transform,"Collision-Matched Vertical Rock Wall",
-                Vector3.zero,size,3,.72f);
+            CreateSilverVerticalWallSurface(go.transform,name,size);
             return;
         }
         DungeonVisualTheme theme=CurrentTheme;
@@ -1547,7 +1626,7 @@ public static class MineLevelBuilder
 
         CreateTiledBackdrop(root,distantMineBackgroundSprite==null?art.Platform:distantMineBackgroundSprite,
             "Distant Non-Collidable Mine Background",new Vector3(0f,0f,5f),
-            new Vector2(116f,78f),-130,Color.white);
+            new Vector2(140f,96f),-130,Color.white);
 
         Vector2 heroPosition=new(-48f,-29.55f);
         GameObject hero=SpawnHero(prefab,scene,heroPosition);
@@ -1764,10 +1843,10 @@ public static class MineLevelBuilder
         GameObject wall=new("Fake Rock Wall - Walk Through To Hidden Gem Room");
         wall.transform.SetParent(parent); wall.transform.position=position;
         SpriteRenderer renderer=wall.AddComponent<SpriteRenderer>();
-        renderer.sprite=foregroundRockPanelSprite==null?rockSprite:foregroundRockPanelSprite;
+        renderer.sprite=silverRockFillSprite==null?rockSprite:silverRockFillSprite;
         renderer.drawMode=SpriteDrawMode.Tiled; renderer.tileMode=SpriteTileMode.Continuous;
         renderer.size=size; renderer.sortingOrder=12;
-        renderer.color=foregroundRockPanelSprite==null?RockSurfaceTint():Color.white;
+        renderer.color=silverRockFillSprite==null?RockSurfaceTint():Color.white;
         wall.AddComponent<ThemedMetalFlakes>().Configure(CurrentTheme,renderer,1f,919);
         BoxCollider2D trigger=wall.AddComponent<BoxCollider2D>(); trigger.isTrigger=true; trigger.size=size;
         FakeWallReveal reveal=wall.AddComponent<FakeWallReveal>(); reveal.Configure(renderer,true,.64f,.14f,.28f);
@@ -1964,14 +2043,75 @@ public static class MineLevelBuilder
         AssetDatabase.ImportAsset(path,ImportAssetOptions.ForceSynchronousImport); TextureImporter importer=AssetImporter.GetAtPath(path) as TextureImporter; if(importer==null) throw new InvalidDataException(path); importer.textureType=TextureImporterType.Sprite; importer.spriteImportMode=SpriteImportMode.Single; importer.spritePixelsPerUnit=ppu; importer.filterMode=smooth?FilterMode.Bilinear:FilterMode.Point; importer.wrapMode=repeat?TextureWrapMode.Repeat:TextureWrapMode.Clamp; importer.mipmapEnabled=false; importer.textureCompression=TextureImporterCompression.Uncompressed; importer.alphaIsTransparency=true; importer.isReadable=readable; importer.maxTextureSize=2048; TextureImporterSettings settings=new(); importer.ReadTextureSettings(settings); settings.spriteMeshType=SpriteMeshType.FullRect; importer.SetTextureSettings(settings); importer.SaveAndReimport(); return AssetDatabase.LoadAssetAtPath<Sprite>(path);
     }
 
-    private static Sprite ImportNineSliceSprite(string path,float ppu,Vector4 border)
+    private static Sprite ImportSilverRockTileSet(string path,float ppu)
     {
-        ImportSprite(path,ppu,false,true,true);
+        AssetDatabase.ImportAsset(path,ImportAssetOptions.ForceSynchronousImport);
         TextureImporter importer=AssetImporter.GetAtPath(path) as TextureImporter;
         if(importer==null) throw new InvalidDataException(path);
-        importer.spriteBorder=border;
+        importer.textureType=TextureImporterType.Sprite;
+        importer.spriteImportMode=SpriteImportMode.Multiple;
+        importer.spritePixelsPerUnit=ppu;
+        importer.filterMode=FilterMode.Bilinear;
+        importer.wrapMode=TextureWrapMode.Clamp;
+        importer.mipmapEnabled=false;
+        importer.textureCompression=TextureImporterCompression.Uncompressed;
+        importer.alphaIsTransparency=true;
+        importer.isReadable=false;
+        importer.maxTextureSize=2048;
+        TextureImporterSettings settings=new(); importer.ReadTextureSettings(settings);
+        settings.spriteMeshType=SpriteMeshType.FullRect; importer.SetTextureSettings(settings);
         importer.SaveAndReimport();
-        return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+
+        var factories=new SpriteDataProviderFactories(); factories.Init();
+        ISpriteEditorDataProvider provider=factories.GetSpriteEditorDataProviderFromObject(importer);
+        if(provider==null) throw new InvalidDataException($"No sprite data provider for {path}");
+        provider.InitSpriteEditorDataProvider();
+        Dictionary<string,GUID> existingIds=provider.GetSpriteRects()
+            .GroupBy(rect=>rect.name).ToDictionary(group=>group.Key,group=>group.First().spriteID);
+        SpriteRect[] slices=new[]
+        {
+            RockSlice("SilverRock_BottomLeft",0,0,170,230),
+            RockSlice("SilverRock_BottomMiddle",170,0,684,230),
+            RockSlice("SilverRock_BottomRight",854,0,170,230),
+            RockSlice("SilverRock_LeftMiddle",0,230,170,544),
+            RockSlice("SilverRock_Fill",170,230,684,544),
+            RockSlice("SilverRock_RightMiddle",854,230,170,544),
+            RockSlice("SilverRock_TopLeft",0,774,170,250),
+            RockSlice("SilverRock_TopMiddle",170,774,684,250),
+            RockSlice("SilverRock_TopRight",854,774,170,250)
+        };
+        foreach(SpriteRect slice in slices)
+            slice.spriteID=existingIds.TryGetValue(slice.name,out GUID id)?id:GUID.Generate();
+        provider.SetSpriteRects(slices);
+        ISpriteNameFileIdDataProvider nameProvider=provider.GetDataProvider<ISpriteNameFileIdDataProvider>();
+        if(nameProvider!=null)
+            nameProvider.SetNameFileIdPairs(slices.Select(slice=>new SpriteNameFileIdPair(slice.name,slice.spriteID)));
+        provider.Apply();
+        importer.SaveAndReimport();
+        Dictionary<string,Sprite> sprites=AssetDatabase.LoadAllAssetsAtPath(path).OfType<Sprite>()
+            .ToDictionary(sprite=>sprite.name,sprite=>sprite);
+        silverRockBottomLeftSprite=sprites["SilverRock_BottomLeft"];
+        silverRockBottomMiddleSprite=sprites["SilverRock_BottomMiddle"];
+        silverRockBottomRightSprite=sprites["SilverRock_BottomRight"];
+        silverRockLeftMiddleSprite=sprites["SilverRock_LeftMiddle"];
+        silverRockFillSprite=sprites["SilverRock_Fill"];
+        silverRockRightMiddleSprite=sprites["SilverRock_RightMiddle"];
+        silverRockTopLeftSprite=sprites["SilverRock_TopLeft"];
+        silverRockTopMiddleSprite=sprites["SilverRock_TopMiddle"];
+        silverRockTopRightSprite=sprites["SilverRock_TopRight"];
+        return silverRockFillSprite;
+    }
+
+    private static SpriteRect RockSlice(string name,float x,float y,float width,float height)
+    {
+        return new SpriteRect
+        {
+            name=name,
+            rect=new Rect(x,y,width,height),
+            alignment=SpriteAlignment.Center,
+            pivot=new Vector2(.5f,.5f),
+            border=Vector4.zero
+        };
     }
 
     private static void CreatePixelAssets() { WritePlatform(); WriteMineBackgroundTiles(); WriteGem(GreenGemPath,new Color32(11,91,56,255),new Color32(32,210,106,255),new Color32(145,255,184,255)); WriteGem(BlueGemPath,new Color32(18,63,139,255),new Color32(46,148,255,255),new Color32(176,230,255,255)); WriteGem(PurpleGemPath,new Color32(74,27,112,255),new Color32(177,72,234,255),new Color32(245,184,255,255)); WriteSpike(); WriteParachute(); WriteKey(BronzeKeyPath,new Color32(106,58,24,255),new Color32(213,126,54,255),new Color32(255,193,94,255)); WriteKey(SilverKeyPath,new Color32(72,83,101,255),new Color32(172,190,211,255),new Color32(242,250,255,255)); WriteChest(); WriteOpenChest(); }

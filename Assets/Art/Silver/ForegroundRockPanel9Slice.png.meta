@@ -5,6 +5,33 @@ TextureImporter:
   - first:
       213: 948334203503072605
     second: ForegroundRockPanel9Slice_0
+  - first:
+      213: 7068162275086627787
+    second: SilverRock_BottomLeft
+  - first:
+      213: 7247073141351558849
+    second: SilverRock_BottomMiddle
+  - first:
+      213: 263119815583534021
+    second: SilverRock_BottomRight
+  - first:
+      213: -2009779038465947807
+    second: SilverRock_LeftMiddle
+  - first:
+      213: -4733496313404442565
+    second: SilverRock_Fill
+  - first:
+      213: 9084590073450119094
+    second: SilverRock_RightMiddle
+  - first:
+      213: 7172829552610428475
+    second: SilverRock_TopLeft
+  - first:
+      213: -3887477422319824466
+    second: SilverRock_TopMiddle
+  - first:
+      213: -1228459388775382527
+    second: SilverRock_TopRight
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -40,18 +67,18 @@ TextureImporter:
     filterMode: 1
     aniso: 1
     mipBias: 0
-    wrapU: 0
-    wrapV: 0
-    wrapW: 0
+    wrapU: 1
+    wrapV: 1
+    wrapW: 1
   nPOTScale: 0
   lightmap: 0
   compressionQuality: 50
-  spriteMode: 1
+  spriteMode: 2
   spriteExtrude: 1
   spriteMeshType: 0
   alignment: 0
   spritePivot: {x: 0.5, y: 0.5}
-  spritePixelsToUnits: 512
+  spritePixelsToUnits: 256
   spriteBorder: {x: 150, y: 230, z: 150, w: 150}
   spriteGenerateFallbackPhysicsShape: 1
   alphaUsage: 1
@@ -139,23 +166,199 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: ForegroundRockPanel9Slice_0
+      name: SilverRock_BottomLeft
       rect:
         serializedVersion: 2
         x: 0
         y: 0
-        width: 1254
-        height: 1254
+        width: 170
+        height: 230
       alignment: 0
-      pivot: {x: 0, y: 0}
+      pivot: {x: 0.5, y: 0.5}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: d5557200fe8292d00800000000000000
-      internalID: 948334203503072605
+      spriteID: bc3fa55f328271260800000000000000
+      internalID: 7068162275086627787
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: SilverRock_BottomMiddle
+      rect:
+        serializedVersion: 2
+        x: 170
+        y: 0
+        width: 684
+        height: 230
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 1cea88b10a6c29460800000000000000
+      internalID: 7247073141351558849
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: SilverRock_BottomRight
+      rect:
+        serializedVersion: 2
+        x: 854
+        y: 0
+        width: 170
+        height: 230
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 5cb0935041ac6a300800000000000000
+      internalID: 263119815583534021
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: SilverRock_LeftMiddle
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 230
+        width: 170
+        height: 544
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 167063fdc94db14e0800000000000000
+      internalID: -2009779038465947807
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: SilverRock_Fill
+      rect:
+        serializedVersion: 2
+        x: 170
+        y: 230
+        width: 684
+        height: 544
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b3838ed9e2e3f4eb0800000000000000
+      internalID: -4733496313404442565
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: SilverRock_RightMiddle
+      rect:
+        serializedVersion: 2
+        x: 854
+        y: 230
+        width: 170
+        height: 544
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 6bfb8022a82f21e70800000000000000
+      internalID: 9084590073450119094
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: SilverRock_TopLeft
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 774
+        width: 170
+        height: 250
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b36c4cd89720b8360800000000000000
+      internalID: 7172829552610428475
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: SilverRock_TopMiddle
+      rect:
+        serializedVersion: 2
+        x: 170
+        y: 774
+        width: 684
+        height: 250
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: ea1964291e7ec0ac0800000000000000
+      internalID: -3887477422319824466
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: SilverRock_TopRight
+      rect:
+        serializedVersion: 2
+        x: 854
+        y: 774
+        width: 170
+        height: 250
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 102cc0fc1b2a3fee0800000000000000
+      internalID: -1228459388775382527
       vertices: []
       indices: 
       edges: []
@@ -174,7 +377,15 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      ForegroundRockPanel9Slice_0: 948334203503072605
+      SilverRock_BottomLeft: 7068162275086627787
+      SilverRock_BottomMiddle: 7247073141351558849
+      SilverRock_BottomRight: 263119815583534021
+      SilverRock_Fill: -4733496313404442565
+      SilverRock_LeftMiddle: -2009779038465947807
+      SilverRock_RightMiddle: 9084590073450119094
+      SilverRock_TopLeft: 7172829552610428475
+      SilverRock_TopMiddle: -3887477422319824466
+      SilverRock_TopRight: -1228459388775382527
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 
