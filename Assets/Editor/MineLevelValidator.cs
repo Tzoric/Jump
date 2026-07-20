@@ -32,8 +32,8 @@ public static class MineLevelValidator
     private const string OpenChestArt = "Assets/Art/Generated/BronzeRewardChestOpen.png";
     private const string SpikeArt = "Assets/Art/Generated/BronzeSpike.png";
     private const string SharedRockFillArt = "Assets/Art/Silver/SharedCaveRockTile.png";
-    private const string RockEdgeArt = "Assets/Art/Silver/RockEdgeTile.png";
-    private const string RockCornerArt = "Assets/Art/Silver/RockCornerTile.png";
+    private const string DistantMineBackgroundArt = "Assets/Art/Silver/DistantMineBackground.png";
+    private const string ForegroundRockPanelArt = "Assets/Art/Silver/ForegroundRockPanel9Slice.png";
     private const string PolishedSpikeArt = "Assets/Art/Silver/PolishedBronzeSpikes.png";
     private const string CutGemArt = "Assets/Art/Silver/TintableCutGem.png";
     private const string SilverChestClosedArt = "Assets/Art/Silver/SilverBoundChestClosed.png";
@@ -1525,10 +1525,52 @@ public static class MineLevelValidator
         HashSet<string> rendererPaths = sceneRenderers.Where(renderer => renderer.sprite != null)
             .Select(renderer => NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        Require(rendererPaths.Contains(NormalizePath(SharedRockFillArt)) &&
-                rendererPaths.Contains(NormalizePath(RockEdgeArt)) &&
-                rendererPaths.Contains(NormalizePath(RockCornerArt)),
-            "Silver cave must use separate fill, repeating edge, and corner-cap tiles so exposed rocks end naturally.");
+        string distantBackgroundPath=NormalizePath(DistantMineBackgroundArt);
+        string foregroundPanelPath=NormalizePath(ForegroundRockPanelArt);
+        Require(rendererPaths.Contains(distantBackgroundPath) &&
+                rendererPaths.Contains(foregroundPanelPath),
+            "Silver cave must use the quiet distant-rock background and unified foreground nine-slice panel.");
+        Require(themes[0].DistantBackgroundSprite!=null && themes[0].ForegroundRockPanelSprite!=null &&
+                NormalizePath(AssetDatabase.GetAssetPath(themes[0].DistantBackgroundSprite))==distantBackgroundPath &&
+                NormalizePath(AssetDatabase.GetAssetPath(themes[0].ForegroundRockPanelSprite))==foregroundPanelPath,
+            "Silver background and foreground rock panel must be assigned centrally on the dungeon theme.");
+
+        SpriteRenderer[] distantBackgrounds=sceneRenderers.Where(renderer=>renderer.sprite!=null &&
+            NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite))==distantBackgroundPath).ToArray();
+        Require(distantBackgrounds.Length==1 &&
+                distantBackgrounds[0].name.IndexOf("Background",StringComparison.OrdinalIgnoreCase)>=0 &&
+                distantBackgrounds[0].GetComponentsInParent<Collider2D>(true).Length==0 &&
+                distantBackgrounds[0].GetComponentsInChildren<Collider2D>(true).Length==0,
+            "Silver needs exactly one clearly named, fully non-collidable distant-rock background.");
+
+        SpriteRenderer[] foregroundPanels=sceneRenderers.Where(renderer=>renderer.sprite!=null &&
+            NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite))==foregroundPanelPath).ToArray();
+        Require(foregroundPanels.Length>=30 && foregroundPanels.All(renderer=>
+                renderer.drawMode==SpriteDrawMode.Tiled && renderer.transform.localRotation==Quaternion.identity &&
+                renderer.sprite.border.x>0f && renderer.sprite.border.y>0f &&
+                renderer.sprite.border.z>0f && renderer.sprite.border.w>0f),
+            "Every Silver foreground platform/wall must use the unrotated bordered panel; edge direction comes from the authored tile, not rotated corner pieces.");
+        Require(foregroundPanels.All(renderer=>
+                renderer.name.IndexOf("Corner",StringComparison.OrdinalIgnoreCase)<0 &&
+                renderer.name.IndexOf("Edge",StringComparison.OrdinalIgnoreCase)<0),
+            "Silver foreground rendering must not contain free-floating edge or corner decorations.");
+
+        BoxCollider2D[] silverGround=SceneComponents<BoxCollider2D>().Where(collider=>
+            !collider.isTrigger && collider.gameObject.layer==LayerMask.NameToLayer("Ground")).ToArray();
+        Require(silverGround.Length>=25 && silverGround.All(collider=>
+        {
+            SpriteRenderer panel=collider.GetComponentsInChildren<SpriteRenderer>(true).FirstOrDefault(renderer=>
+                renderer.sprite!=null &&
+                NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite))==foregroundPanelPath);
+            if(panel==null) return false;
+            Bounds visual=panel.bounds;
+            Bounds solid=collider.bounds;
+            return visual.min.x<=solid.min.x+.05f && visual.max.x>=solid.max.x-.05f &&
+                   visual.min.y<=solid.min.y+.05f && visual.max.y>=solid.max.y-.05f;
+        }), "Every solid Silver rock surface must be visually covered by the same foreground panel so collision is readable.");
+        Require(foregroundPanels.Count(renderer=>renderer.name.IndexOf("Single-Thickness",StringComparison.OrdinalIgnoreCase)>=0 &&
+                renderer.size.y<=1.25f)>=20,
+            "Silver rock tiles must support the route's single-thickness platforms without three-by-two corner assemblies or seams.");
 
         FakeWallReveal[] fakeWalls = SceneComponents<FakeWallReveal>();
         Require(fakeWalls.Length >= 1 && fakeWalls.All(wall =>

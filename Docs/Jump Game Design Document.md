@@ -143,7 +143,7 @@ For the pictured Logitech F310, the rear input-mode switch's **X** position is r
 
 ### Platforms
 
-- Mine platforms and walls use a reusable rock fill, repeated whole-rock exposed edges, and rotated/mirrored corner caps. A silhouette must never look like rocks were sliced in half at an arbitrary texture boundary.
+- Mine platforms and walls use collision-matched bordered rock panels. Each collider owns one continuous nine-slice renderer with a flat whole-rock top, a shadowed underside, and directional side caps; this must work for single-thickness ledges without clipped centers, detached corners, or seams between adjacent route sections.
 - Metal inclusions are generated from a dungeon theme rather than baked into separate rock geometry. Bronze uses bronze flakes and Silver uses silver flakes; changing the theme palette, density, or seed is sufficient to retheme shared walls and platforms.
 - Rock faces need enough highlights, shadows, and chipped edges to match the surrounding environment.
 - Platforms remain thinner vertically than the first prototype while preserving clear collision and safe footing.
@@ -344,7 +344,7 @@ Dungeon 2 starts the silver material theme. Silver is not introduced as an envir
 - The former canopy is replaced by a smaller hang glider. Its front-on image is intentionally reserved for Hover, with the wing above the miner, the control bar below, and the miner facing the camera. Neutral Float, Dive, and left/right travel use side-profile art; left travel mirrors the authored right-facing bank, and the top wing flexes/flaps subtly in every deployed state. Neutral input glides, Up/W can wait in the air for moving machinery, and Down/S accelerates descent moderately.
 - Multiple Silver keys and multiple chests validate counted inventory and one-key-per-chest consumption.
 - A fake wall visually matches the surrounding rock yet remains walk-through, revealing an optional room of blue and purple gemstones.
-- Shaded regions are filled with reusable tiled rock and Silver-theme flakes. Exposed surfaces use whole-rock edge and corner pieces instead of clipped fill art.
+- A simple low-contrast field of smaller distant rocks covers the entire mine and is always non-collidable. Solid shaded regions use collision-matched nine-slice foreground rock with Silver-theme flakes; the foreground's flat top, underside, and directional side borders clearly communicate what blocks the miner, including single-thickness platforms. No loose decorative corners are placed in the route.
 - Gems are faceted, animated cut stones at 60% of the former size. Bronze-metal spikes are polished, animated, and 50% of the former size.
 - Chests retain their useful base design but add metal binding, a readable front keyhole, and an opening animation that holds on the open state. Doors open before either entrance or exit traversal begins.
 
@@ -379,7 +379,7 @@ The same shared rock construction and theme hooks are used for Bronze, substitut
 - Input validation confirms fixed left-stick/D-pad and keyboard controls; six stable default controller bindings; meaningful-activity device selection when multiple USB interfaces are attached; semantic-`Gamepad` preference over a noisy duplicate `Joystick`; usable generic DirectInput defaults; the three-page Levels/Shop/Controls overview; six wired mapping rows; per-model persistence; conflict swapping; and Restore Defaults without coupling gameplay overrides to UI navigation. Interact toggles the hang glider anywhere airborne without arming it on the ground, while Up/W and Down/S select hover and faster-descent physics. Presentation validation covers the intentional front-facing Hover, side-profile Float and Dive, mirrored left/right banks, matching miner-facing overrides, visible top-wing flex, and a clean return to the stowed pose.
 - A grounded ordinary or power jump holds row-2 frame 1 for approximately 0.08 seconds before upward velocity begins, then advances directly to frame 2; a quick tap still launches, a held input produces the expected higher arc, and a power jump remains committed through its squat.
 - Pausing and opening the mid-level shop freeze and resume simulation cleanly. Shop purchases leave scene state and miner position intact; the shop's explicit Return-to-Overview action restores normal time, preserves saved progress, and grants neither completion nor a life penalty.
-- Silver Level 1 validates the lower-left-to-lower-right route, two chute zones, multiple scoped key/chest pairs, the non-solid fake wall and blue/purple secret room, animated doors/chests, edge-aware rock construction, and Silver-theme metal flakes.
+- Silver Level 1 validates the lower-left-to-lower-right route, two chute zones, multiple scoped key/chest pairs, the non-solid fake wall and blue/purple secret room, animated doors/chests, a mine-wide non-solid distant background, collision-matched bordered foreground rock, single-thickness platforms, and Silver-theme metal flakes.
 - The hero collider is zero-friction and cannot remain pinned to a wall or platform edge under sustained movement input.
 - Missing hearts render as dim filled-heart glyphs rather than unsupported outline glyphs, the Bronze Miner renders no pickaxe, and a null optional tool remains valid.
 - Levels 2, 5, 8, and 11 plus Level 12's angled sections use dedicated unrotated diagonal-mine artwork. Level 12 background tiles retain uniform scale and cover every camera overscan region without exposing black void.
@@ -388,10 +388,10 @@ The same shared rock construction and theme hooks are used for Bronze, substitut
 
 These reports were produced from the final regenerated scenes and current scripts. Human visual approval of the Silver environment and hang-glider animation remains pending.
 
-- `Logs/SilverFinalValidation.log` records a structural pass across Bronze Levels 1-12 and the available Silver content, including seven hearts, counted scoped keys/chests, the in-level shop, global hang-glider systems, themed rock/metal presentation, doors, hazards, and route contracts.
-- `Logs/SilverFinalMechanicsSmokeTest.json` records every check passing, including exact art selection for the five deployed glider presentation states, front/side miner poses, left/right mirroring, grip-anchor continuity, animated wing flex, scoped key consumption, chest/door interaction, the modal shop, and MINER-only `HEALTH`/`LIFE`.
+- `Logs/SilverTileValidation.log` records a structural pass across Bronze Levels 1-12 and the available Silver content, including seven hearts, counted scoped keys/chests, the in-level shop, global hang-glider systems, the one-piece distant background, collision-matched nine-slice foreground rock, single-thickness platforms, doors, hazards, and route contracts.
+- `Logs/SilverTileMechanicsSmokeTest.json` records every check passing, including exact art selection for the five deployed glider presentation states, front/side miner poses, left/right mirroring, grip-anchor continuity, animated wing flex, scoped key consumption, chest/door interaction, the modal shop, and MINER-only `HEALTH`/`LIFE`.
 - `Logs/SilverFinalShopPlaytest.json` records the modal shop opening and closing in the final 49-waypoint scene without unloading or resetting the live level.
-- `Logs/SilverFinalFullRoutePlaytest.json` records all 49 waypoints completed, the configured exit reached, no respawn, global hang-glider use observed, and real Up-hover plus Down-dive route input exercised in `SilverLevel1_SilverLode.unity`.
+- `Logs/SilverTileFullRoutePlaytest.json` records all 49 waypoints completed, the configured exit reached, no respawn, global hang-glider use observed, and real Up-hover plus Down-dive route input exercised in `SilverLevel1_SilverLode.unity`.
 
 ### Human playtest focus
 

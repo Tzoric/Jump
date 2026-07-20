@@ -28,6 +28,8 @@ public sealed class DungeonVisualTheme : ScriptableObject
     [SerializeField] private int metalFlakeSeed = 1701;
 
     [Header("Environment Sprites")]
+    [SerializeField] private Sprite distantBackgroundSprite;
+    [SerializeField] private Sprite foregroundRockPanelSprite;
     [SerializeField] private Sprite rockFillSprite;
     [SerializeField] private Sprite rockDetailSprite;
     [SerializeField] private Sprite wallSprite;
@@ -60,6 +62,8 @@ public sealed class DungeonVisualTheme : ScriptableObject
     public float MetalFlakeDensity => metalFlakeDensity;
     public int MetalFlakeSeed => metalFlakeSeed;
 
+    public Sprite DistantBackgroundSprite => distantBackgroundSprite;
+    public Sprite ForegroundRockPanelSprite => foregroundRockPanelSprite;
     public Sprite RockFillSprite => rockFillSprite;
     public Sprite RockDetailSprite => rockDetailSprite;
     public Sprite WallSprite => wallSprite;
@@ -106,9 +110,11 @@ public sealed class DungeonVisualTheme : ScriptableObject
         glintSprite = shineSprite;
     }
 
-    public void ConfigureEnvironmentSprites(Sprite rockFill, Sprite rockDetail, Sprite wall,
-        Sprite platform, Sprite flake, Sprite shine)
+    public void ConfigureEnvironmentSprites(Sprite distantBackground, Sprite foregroundPanel,
+        Sprite rockFill, Sprite rockDetail, Sprite wall, Sprite platform, Sprite flake, Sprite shine)
     {
+        distantBackgroundSprite = distantBackground;
+        foregroundRockPanelSprite = foregroundPanel;
         rockFillSprite = rockFill;
         rockDetailSprite = rockDetail;
         wallSprite = wall;

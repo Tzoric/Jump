@@ -136,7 +136,8 @@ Difficulty and length increase through the sequence. Level 3 deliberately introd
 - Several independently persisted Silver keys and metal-bound reward chests exercise counted key inventory and one-key-per-chest consumption.
 - A rock-matching non-solid fake wall hides the optional blue/purple gem room. `FakeWallReveal` preserves the stone silhouette at rest and fades it only while the miner passes through.
 - Doors visibly open before entrance/exit traversal begins. Chests play their lock/open sequence and remain open after their persistent reward is claimed.
-- Silver rock masses use the shared stone fill plus repeated edge pieces and rotated/mirrored corner caps. `ThemedMetalFlakes` reads the Silver theme rather than baking silver into the geometry, so a dungeon's `DungeonVisualTheme` asset is the single place to change flake color, highlight, density, and deterministic seed.
+- Silver uses one low-contrast, small-rock distant background across the mine. It is always non-collidable. Every solid platform and wall is instead rendered by one collision-matched nine-slice foreground panel, giving thin ledges a continuous flat top, a dark underside, and correctly oriented side caps without loose corner objects or clipped fill seams.
+- `ThemedMetalFlakes` reads the Silver theme rather than baking silver into the rock geometry, so a dungeon's `DungeonVisualTheme` asset remains the single place to change flake color, highlight, density, and deterministic seed.
 - The polished cut-gem render is authored at 60% of the former gameplay size. Bronze spike art is authored at 50%, uses visible-tooth damage geometry, and receives a timed glint through `SpriteShineAnimator`.
 
 The Silver scene is the current art/gameplay proving ground. Reuse its shared tile and theme system in Bronze, but do not revise the existing Bronze level layouts until the Silver test has been reviewed.
@@ -257,10 +258,10 @@ The builder has successfully generated the current Silver overview/level and the
 
 The following reports were produced from the final regenerated scenes and current scripts. Human visual approval of the Silver art and hang-glider animation remains pending.
 
-- `Logs/SilverFinalValidation.log` records a structural pass covering Bronze Levels 1-12 plus the available Silver content, including seven-heart health, counted keys/chests, global hang-glider mechanics, the shop, themed visuals, hazards, and route contracts.
-- `Logs/SilverFinalMechanicsSmokeTest.json` records every smoke check passing, including scoped counted inventory, chest and door interaction, mid-level shop behavior, MINER-only `HEALTH`/`LIFE`, global glider input, exact art selection for all five deployed visual states, front/side miner poses, left/right mirroring, grip-anchor continuity, wing flex, and clean stowing.
+- `Logs/SilverTileValidation.log` records a structural pass covering Bronze Levels 1-12 plus the available Silver content, including seven-heart health, counted keys/chests, global hang-glider mechanics, the shop, the one-piece distant background, collision-matched bordered foreground panels, single-thickness platforms, hazards, and route contracts.
+- `Logs/SilverTileMechanicsSmokeTest.json` records every smoke check passing, including scoped counted inventory, chest and door interaction, mid-level shop behavior, MINER-only `HEALTH`/`LIFE`, global glider input, exact art selection for all five deployed visual states, front/side miner poses, left/right mirroring, grip-anchor continuity, wing flex, and clean stowing.
 - `Logs/SilverFinalShopPlaytest.json` records the modal shop opening and closing in the final 49-waypoint scene without unloading or resetting the level; the miner remains at seven health with no respawn.
-- `Logs/SilverFinalFullRoutePlaytest.json` records a 49-of-49 waypoint pass through `SilverLevel1_SilverLode.unity`, reaches the configured exit with no respawn, and reports `globalGliderObserved`, `routeGliderHoverExercised`, and `routeGliderDiveExercised` as true.
+- `Logs/SilverTileFullRoutePlaytest.json` records a 49-of-49 waypoint pass through `SilverLevel1_SilverLode.unity`, reaches the configured exit with no respawn, and reports `globalGliderObserved`, `routeGliderHoverExercised`, and `routeGliderDiveExercised` as true.
 
 The virtual controller drives movement through `HeroMovement`, follows ordered `AutomatedPlaytestWaypoint` objects, and explicitly activates the exit after reaching its proximity trigger while grounded. A waypoint's `UsePowerJump` flag commits Run+Jump for that required launch; `-playtestPowerRun` forces the same behavior for every eligible route jump. Required routes should remain deterministic enough for unattended verification while optional key and treasure routes are validated separately. Level 12 additionally uses airborne-pass waypoints and automated hang-glider deployment so all three descent corridors are exercised through their intended safe lanes.
 
@@ -316,16 +317,17 @@ Apparent weight is `(base + carried) x weight multiplier x gravity multiplier`.
 
 ### Shared generated art and theme sources
 
-- Neutral cave fill: `Assets/Art/Silver/SharedCaveRockTile.png`
-- Whole-rock exposed edge and corner cap: `Assets/Art/Silver/RockEdgeTile.png`, `Assets/Art/Silver/RockCornerTile.png`
+- Distant non-collidable mine field: `Assets/Art/Silver/DistantMineBackground.png`
+- Collision-matched bordered foreground rock: `Assets/Art/Silver/ForegroundRockPanel9Slice.png`
 - Cut gem, bronze spikes, keyed chest pair, key, and open mine door: `Assets/Art/Silver/TintableCutGem.png`, `PolishedBronzeSpikes.png`, `SilverBoundChestClosed.png`, `SilverBoundChestOpen.png`, `SilverChestKey.png`, and `MineDoorOpen.png`
 - Hang-glider states: `Assets/Art/Silver/MinerHangGlider.png` is the intentional front-on Hover image; `HangGliderFloatRight.png`, `HangGliderDiveRight.png`, and `HangGliderBankRight.png` provide the side-profile Float, Dive, and directional bank art, with the bank mirrored for left travel.
 - Theme assets: `Assets/Art/Generated/BronzeDungeonTheme.asset` and `Assets/Art/Silver/SilverDungeonTheme.asset`
 - Runtime sources: `Assets/Scripts/DungeonVisualTheme.cs`, `ThemedMetalFlakes.cs`, `SpriteShineAnimator.cs`, `MineDoorAnimator.cs`, `FakeWallReveal.cs`, `MidLevelShopController.cs`, `PlaytestCheatController.cs`, and `HangGliderVisualController.cs`; scene/theme generation remains in `Assets/Editor/MineLevelBuilder.cs`.
 
-The shared bitmap sources supply shape and texture. Do not recolor or clone rock sheets just to change ore: edit the appropriate `DungeonVisualTheme` palette/density and let `ThemedMetalFlakes` generate dungeon-specific inclusions.
+The shared bitmap sources supply shape and texture. Do not recolor or clone rock sheets just to change ore: edit the appropriate `DungeonVisualTheme` palette/density and let `ThemedMetalFlakes` generate dungeon-specific inclusions. `DungeonVisualTheme` also owns the distant-background and foreground-panel sprite references so another dungeon can replace either material without changing scene geometry.
 
-- Platform and wall silhouettes use whole-rock exposed edges and corner caps, never a fill texture abruptly cut at the collider boundary.
+- Silver platform and wall silhouettes use one unrotated, continuously tiled nine-slice renderer per collider. The sprite border owns the flat walkable top, blunt underside, and directional sides, including platforms only one unit thick; do not add free-floating edge or corner renderers.
+- The distant small-rock background covers the complete mine, remains low contrast and non-collidable, and must never be used to communicate a traversal boundary.
 - Bronze and Silver variants share the same rock construction while their theme-driven metal flakes read clearly as bronze or silver.
 - Gems read as faceted cut gemstones with a moving highlight at 60% scale; bronze spikes read as polished metal with a moving shine at 50% scale.
 - Chests have visible metal binding and a clear front keyhole, animate only after a valid key is consumed, and hold the open frame afterward.

@@ -24,6 +24,8 @@ MonoBehaviour:
   accentLight: {r: 1, g: 0.68235296, b: 0.35686275, a: 1}
   metalFlakeDensity: 0.34
   metalFlakeSeed: 1701
+  distantBackgroundSprite: {fileID: 0}
+  foregroundRockPanelSprite: {fileID: 21300000, guid: e9a100b3f1a976143af3ea7f4667e0eb, type: 3}
   rockFillSprite: {fileID: 21300000, guid: e9a100b3f1a976143af3ea7f4667e0eb, type: 3}
   rockDetailSprite: {fileID: 21300000, guid: b23b3612cacb4ff44971347f5f5e0a23, type: 3}
   wallSprite: {fileID: 21300000, guid: b23b3612cacb4ff44971347f5f5e0a23, type: 3}
