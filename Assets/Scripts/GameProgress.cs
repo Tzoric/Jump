@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 
 public static class GameProgress
@@ -10,10 +12,19 @@ public static class GameProgress
     private const string InitializedKey = "Jump.ProgressInitialized";
     private const string HighestUnlockedLevelKey = "Jump.HighestUnlockedLevel";
     private const string SilverKeyKey = "Jump.SilverKey";
+    private const string InventoryEpochKey = "Jump.InventoryEpoch";
+    private const string ScopedKeyCountPrefix = "Jump.Inventory.v2.KeyCount";
+    private const string ScopedPickupPrefix = "Jump.Inventory.v2.Pickup";
+    private const string ScopedChestPrefix = "Jump.Inventory.v2.Chest";
+
+    public const string BronzeDungeonId = "bronze";
+    public const string SilverDungeonId = "silver";
+    public const string LegacyBronzeKeyPickupId = "legacy-bronze-key";
+    public const string LegacyRewardChestId = "legacy-reward-chest";
 
     public const int MaxMineLevel = 12;
     public const int StartingLives = 3;
-    public const int BaseHearts = 5;
+    public const int BaseHearts = 7;
     public const int ExtraLifePrice = 25;
     public const int HealthPotionPrice = 3;
     public const int HeartUpgradePrice = 25;
@@ -26,8 +37,9 @@ public static class GameProgress
     private static int playtestHeartUpgrades;
     private static int playtestHighestUnlockedLevel;
     private static bool playtestHasSilverKey;
-    private static readonly bool[] PlaytestBronzeKeys = new bool[MaxMineLevel + 1];
-    private static readonly bool[] PlaytestOpenedChests = new bool[MaxMineLevel + 1];
+    private static readonly Dictionary<string, int> PlaytestKeyCounts = new();
+    private static readonly HashSet<string> PlaytestCollectedPickups = new();
+    private static readonly HashSet<string> PlaytestOpenedChests = new();
 
     public static event Action LevelAccessChanged;
 
@@ -57,8 +69,7 @@ public static class GameProgress
     {
         playtestAccessEnabled = false;
         playtestRunActive = false;
-        Array.Clear(PlaytestBronzeKeys, 0, PlaytestBronzeKeys.Length);
-        Array.Clear(PlaytestOpenedChests, 0, PlaytestOpenedChests.Length);
+        ClearPlaytestInventory();
         LevelAccessChanged = null;
     }
 
@@ -185,6 +196,11 @@ public static class GameProgress
         PlayerPrefs.DeleteKey(HighestUnlockedLevelKey);
         PlayerPrefs.DeleteKey(SilverKeyKey);
 
+        // Scoped inventory entries can contain authored pickup/chest IDs, so
+        // PlayerPrefs cannot enumerate them safely. Advancing the epoch makes
+        // every scoped entry from the previous run unreachable in one write.
+        PlayerPrefs.SetInt(InventoryEpochKey, CurrentInventoryEpoch + 1);
+
         for (int levelNumber = 1; levelNumber <= MaxMineLevel; levelNumber++)
         {
             PlayerPrefs.DeleteKey($"Jump.BronzeKey.{levelNumber}");
@@ -236,41 +252,215 @@ public static class GameProgress
     public static bool HasBronzeKey(int levelNumber)
     {
         int safeLevel = Mathf.Clamp(levelNumber, 1, MaxMineLevel);
-        return playtestRunActive
-            ? PlaytestBronzeKeys[safeLevel]
-            : PlayerPrefs.GetInt($"Jump.BronzeKey.{safeLevel}", 0) != 0;
+        return GetKeyCount(BronzeDungeonId, safeLevel) > 0;
     }
 
     public static void CollectBronzeKey(int levelNumber)
     {
         int safeLevel = Mathf.Clamp(levelNumber, 1, MaxMineLevel);
+
+        // The original API represented one reusable Boolean key. Keep calls
+        // idempotent while upgrading that key into the counted inventory.
         if (playtestRunActive)
         {
-            PlaytestBronzeKeys[safeLevel] = true;
+            string scope = ScopeIdentity(BronzeDungeonId, safeLevel);
+            PlaytestCollectedPickups.Add(
+                PickupIdentity(BronzeDungeonId, safeLevel, LegacyBronzeKeyPickupId));
+            if (GetKeyCount(BronzeDungeonId, safeLevel) == 0)
+            {
+                PlaytestKeyCounts[scope] = 1;
+            }
             return;
         }
-        PlayerPrefs.SetInt($"Jump.BronzeKey.{safeLevel}", 1);
+
+        WritePersistedPickupCollected(BronzeDungeonId, safeLevel,
+            LegacyBronzeKeyPickupId);
+        if (LoadPersistedKeyCount(BronzeDungeonId, safeLevel) == 0)
+        {
+            WritePersistedKeyCount(BronzeDungeonId, safeLevel, 1);
+        }
         PlayerPrefs.Save();
+    }
+
+    public static bool TryConsumeBronzeKey(int levelNumber)
+    {
+        int safeLevel = Mathf.Clamp(levelNumber, 1, MaxMineLevel);
+        return TryConsumeKey(BronzeDungeonId, safeLevel);
     }
 
     public static bool IsChestOpened(int levelNumber)
     {
         int safeLevel = Mathf.Clamp(levelNumber, 1, MaxMineLevel);
-        return playtestRunActive
-            ? PlaytestOpenedChests[safeLevel]
-            : PlayerPrefs.GetInt($"Jump.ChestOpened.{safeLevel}", 0) != 0;
+        return IsChestOpened(BronzeDungeonId, safeLevel, LegacyRewardChestId);
     }
 
     public static void MarkChestOpened(int levelNumber)
     {
         int safeLevel = Mathf.Clamp(levelNumber, 1, MaxMineLevel);
+        MarkChestOpened(BronzeDungeonId, safeLevel, LegacyRewardChestId);
+    }
+
+    public static int GetKeyCount(string dungeonId, int levelNumber)
+    {
+        string normalizedDungeon = NormalizeDungeonId(dungeonId);
+        int safeLevel = Mathf.Max(1, levelNumber);
+        string scope = ScopeIdentity(normalizedDungeon, safeLevel);
+
         if (playtestRunActive)
         {
-            PlaytestOpenedChests[safeLevel] = true;
+            if (!PlaytestKeyCounts.TryGetValue(scope, out int count))
+            {
+                count = LoadPersistedKeyCount(normalizedDungeon, safeLevel);
+                PlaytestKeyCounts[scope] = count;
+            }
+            return count;
+        }
+
+        return LoadPersistedKeyCount(normalizedDungeon, safeLevel);
+    }
+
+    public static bool HasKey(string dungeonId, int levelNumber)
+    {
+        return GetKeyCount(dungeonId, levelNumber) > 0;
+    }
+
+    public static bool IsKeyPickupCollected(string dungeonId, int levelNumber,
+        string pickupId)
+    {
+        string normalizedDungeon = NormalizeDungeonId(dungeonId);
+        int safeLevel = Mathf.Max(1, levelNumber);
+        string normalizedPickup = NormalizeContentId(pickupId, LegacyBronzeKeyPickupId);
+        string identity = PickupIdentity(normalizedDungeon, safeLevel, normalizedPickup);
+
+        if (playtestRunActive)
+        {
+            if (PlaytestCollectedPickups.Contains(identity)) return true;
+            if (!LoadPersistedPickupCollected(normalizedDungeon, safeLevel, normalizedPickup))
+            {
+                return false;
+            }
+
+            PlaytestCollectedPickups.Add(identity);
+            return true;
+        }
+
+        return LoadPersistedPickupCollected(normalizedDungeon, safeLevel, normalizedPickup);
+    }
+
+    public static bool TryCollectKey(string dungeonId, int levelNumber, string pickupId)
+    {
+        string normalizedDungeon = NormalizeDungeonId(dungeonId);
+        int safeLevel = Mathf.Max(1, levelNumber);
+        string normalizedPickup = NormalizeContentId(pickupId, LegacyBronzeKeyPickupId);
+        string pickupIdentity = PickupIdentity(normalizedDungeon, safeLevel, normalizedPickup);
+        string scope = ScopeIdentity(normalizedDungeon, safeLevel);
+
+        if (IsKeyPickupCollected(normalizedDungeon, safeLevel, normalizedPickup))
+        {
+            return false;
+        }
+
+        if (playtestRunActive)
+        {
+            PlaytestCollectedPickups.Add(pickupIdentity);
+            PlaytestKeyCounts[scope] = GetKeyCount(normalizedDungeon, safeLevel) + 1;
+            return true;
+        }
+
+        WritePersistedPickupCollected(normalizedDungeon, safeLevel, normalizedPickup);
+        WritePersistedKeyCount(normalizedDungeon, safeLevel,
+            LoadPersistedKeyCount(normalizedDungeon, safeLevel) + 1);
+        PlayerPrefs.Save();
+        return true;
+    }
+
+    public static bool TryConsumeKey(string dungeonId, int levelNumber)
+    {
+        string normalizedDungeon = NormalizeDungeonId(dungeonId);
+        int safeLevel = Mathf.Max(1, levelNumber);
+        int count = GetKeyCount(normalizedDungeon, safeLevel);
+        if (count <= 0) return false;
+
+        int remaining = count - 1;
+        if (playtestRunActive)
+        {
+            PlaytestKeyCounts[ScopeIdentity(normalizedDungeon, safeLevel)] = remaining;
+            return true;
+        }
+
+        WritePersistedKeyCount(normalizedDungeon, safeLevel, remaining);
+        PlayerPrefs.Save();
+        return true;
+    }
+
+    public static bool IsChestOpened(string dungeonId, int levelNumber, string chestId)
+    {
+        string normalizedDungeon = NormalizeDungeonId(dungeonId);
+        int safeLevel = Mathf.Max(1, levelNumber);
+        string normalizedChest = NormalizeContentId(chestId, LegacyRewardChestId);
+        string identity = ChestIdentity(normalizedDungeon, safeLevel, normalizedChest);
+
+        if (playtestRunActive)
+        {
+            if (PlaytestOpenedChests.Contains(identity)) return true;
+            if (!LoadPersistedChestOpened(normalizedDungeon, safeLevel, normalizedChest))
+            {
+                return false;
+            }
+
+            PlaytestOpenedChests.Add(identity);
+            return true;
+        }
+
+        return LoadPersistedChestOpened(normalizedDungeon, safeLevel, normalizedChest);
+    }
+
+    public static void MarkChestOpened(string dungeonId, int levelNumber, string chestId)
+    {
+        string normalizedDungeon = NormalizeDungeonId(dungeonId);
+        int safeLevel = Mathf.Max(1, levelNumber);
+        string normalizedChest = NormalizeContentId(chestId, LegacyRewardChestId);
+        string identity = ChestIdentity(normalizedDungeon, safeLevel, normalizedChest);
+
+        if (playtestRunActive)
+        {
+            PlaytestOpenedChests.Add(identity);
             return;
         }
-        PlayerPrefs.SetInt($"Jump.ChestOpened.{safeLevel}", 1);
+
+        WritePersistedChestOpened(normalizedDungeon, safeLevel, normalizedChest);
         PlayerPrefs.Save();
+    }
+
+    /// <summary>
+    /// Claims a chest and consumes its key as one gameplay transaction. The
+    /// caller should award the reward only after this method returns true.
+    /// </summary>
+    public static bool TryUnlockChest(string dungeonId, int levelNumber, string chestId)
+    {
+        string normalizedDungeon = NormalizeDungeonId(dungeonId);
+        int safeLevel = Mathf.Max(1, levelNumber);
+        string normalizedChest = NormalizeContentId(chestId, LegacyRewardChestId);
+        string chestIdentity = ChestIdentity(normalizedDungeon, safeLevel, normalizedChest);
+
+        if (IsChestOpened(normalizedDungeon, safeLevel, normalizedChest)) return false;
+
+        int keyCount = GetKeyCount(normalizedDungeon, safeLevel);
+        if (keyCount <= 0) return false;
+
+        if (playtestRunActive)
+        {
+            PlaytestKeyCounts[ScopeIdentity(normalizedDungeon, safeLevel)] = keyCount - 1;
+            PlaytestOpenedChests.Add(chestIdentity);
+            return true;
+        }
+
+        // Both values are changed before the single flush so no second chest
+        // interaction can observe a consumed key without the first chest claim.
+        WritePersistedKeyCount(normalizedDungeon, safeLevel, keyCount - 1);
+        WritePersistedChestOpened(normalizedDungeon, safeLevel, normalizedChest);
+        PlayerPrefs.Save();
+        return true;
     }
 
     public static bool ConsumeLife()
@@ -324,14 +514,7 @@ public static class GameProgress
         playtestHeartUpgrades = PlayerPrefs.GetInt(HeartsUpgradeKey, 0);
         playtestHighestUnlockedLevel = PlayerPrefs.GetInt(HighestUnlockedLevelKey, 2);
         playtestHasSilverKey = PlayerPrefs.GetInt(SilverKeyKey, 0) != 0;
-        for (int levelNumber = 1; levelNumber <= MaxMineLevel; levelNumber++)
-        {
-            PlaytestBronzeKeys[levelNumber] =
-                PlayerPrefs.GetInt($"Jump.BronzeKey.{levelNumber}", 0) != 0;
-            PlaytestOpenedChests[levelNumber] =
-                PlayerPrefs.GetInt($"Jump.ChestOpened.{levelNumber}", 0) != 0;
-        }
-
+        ClearPlaytestInventory();
         playtestRunActive = true;
         return true;
     }
@@ -339,5 +522,207 @@ public static class GameProgress
     public static void EndPlaytestRun()
     {
         playtestRunActive = false;
+        ClearPlaytestInventory();
+    }
+
+    public static string NormalizeDungeonId(string dungeonId)
+    {
+        return NormalizeContentId(dungeonId, BronzeDungeonId);
+    }
+
+    public static string NormalizeContentId(string contentId, string fallback)
+    {
+        string source = string.IsNullOrWhiteSpace(contentId) ? fallback : contentId;
+        source = string.IsNullOrWhiteSpace(source) ? "default" : source.Trim();
+
+        StringBuilder result = new(source.Length);
+        bool separatorPending = false;
+        foreach (char character in source)
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                if (separatorPending && result.Length > 0) result.Append('-');
+                result.Append(char.ToLowerInvariant(character));
+                separatorPending = false;
+            }
+            else
+            {
+                separatorPending = true;
+            }
+        }
+
+        return result.Length == 0 ? "default" : result.ToString();
+    }
+
+    private static int CurrentInventoryEpoch => PlayerPrefs.GetInt(InventoryEpochKey, 0);
+
+    private static string ScopeIdentity(string dungeonId, int levelNumber)
+    {
+        return $"{NormalizeDungeonId(dungeonId)}.{Mathf.Max(1, levelNumber)}";
+    }
+
+    private static string PickupIdentity(string dungeonId, int levelNumber, string pickupId)
+    {
+        return $"{ScopeIdentity(dungeonId, levelNumber)}." +
+            NormalizeContentId(pickupId, LegacyBronzeKeyPickupId);
+    }
+
+    private static string ChestIdentity(string dungeonId, int levelNumber, string chestId)
+    {
+        return $"{ScopeIdentity(dungeonId, levelNumber)}." +
+            NormalizeContentId(chestId, LegacyRewardChestId);
+    }
+
+    private static string ScopedPreferenceKey(string prefix, string identity)
+    {
+        return $"{prefix}.{CurrentInventoryEpoch}.{identity}";
+    }
+
+    private static string KeyCountPreferenceKey(string dungeonId, int levelNumber)
+    {
+        return ScopedPreferenceKey(ScopedKeyCountPrefix,
+            ScopeIdentity(dungeonId, levelNumber));
+    }
+
+    private static string PickupPreferenceKey(string dungeonId, int levelNumber, string pickupId)
+    {
+        return ScopedPreferenceKey(ScopedPickupPrefix,
+            PickupIdentity(dungeonId, levelNumber, pickupId));
+    }
+
+    private static string ChestPreferenceKey(string dungeonId, int levelNumber, string chestId)
+    {
+        return ScopedPreferenceKey(ScopedChestPrefix,
+            ChestIdentity(dungeonId, levelNumber, chestId));
+    }
+
+    private static bool IsLegacyBronzeScope(string dungeonId, int levelNumber)
+    {
+        return NormalizeDungeonId(dungeonId) == BronzeDungeonId &&
+            levelNumber >= 1 && levelNumber <= MaxMineLevel;
+    }
+
+    private static bool IsLegacyPickup(string dungeonId, int levelNumber, string pickupId)
+    {
+        return IsLegacyBronzeScope(dungeonId, levelNumber) &&
+            NormalizeContentId(pickupId, LegacyBronzeKeyPickupId) == LegacyBronzeKeyPickupId;
+    }
+
+    private static bool IsLegacyChest(string dungeonId, int levelNumber, string chestId)
+    {
+        return IsLegacyBronzeScope(dungeonId, levelNumber) &&
+            NormalizeContentId(chestId, LegacyRewardChestId) == LegacyRewardChestId;
+    }
+
+    private static int LoadPersistedKeyCount(string dungeonId, int levelNumber)
+    {
+        string preferenceKey = KeyCountPreferenceKey(dungeonId, levelNumber);
+        if (PlayerPrefs.HasKey(preferenceKey))
+        {
+            return Mathf.Max(0, PlayerPrefs.GetInt(preferenceKey, 0));
+        }
+
+        if (!IsLegacyBronzeScope(dungeonId, levelNumber)) return 0;
+
+        bool legacyKeyCollected =
+            PlayerPrefs.GetInt($"Jump.BronzeKey.{levelNumber}", 0) != 0;
+        bool legacyChestOpened =
+            PlayerPrefs.GetInt($"Jump.ChestOpened.{levelNumber}", 0) != 0;
+        if (!legacyKeyCollected && !legacyChestOpened) return 0;
+
+        // In old saves the key Boolean stayed true after opening the chest. The
+        // migrated consumable count must be zero for that already-open chest,
+        // while the pickup marker stays true so the key never respawns.
+        int migratedCount = legacyKeyCollected && !legacyChestOpened ? 1 : 0;
+        WritePersistedKeyCount(dungeonId, levelNumber, migratedCount);
+        WritePersistedPickupCollected(dungeonId, levelNumber, LegacyBronzeKeyPickupId);
+        PlayerPrefs.Save();
+        return migratedCount;
+    }
+
+    private static bool LoadPersistedPickupCollected(string dungeonId, int levelNumber,
+        string pickupId)
+    {
+        string preferenceKey = PickupPreferenceKey(dungeonId, levelNumber, pickupId);
+        if (PlayerPrefs.GetInt(preferenceKey, 0) != 0) return true;
+
+        // Once a scoped count exists, the legacy Boolean is only a compatibility
+        // mirror of that count; it no longer proves this particular pickup was
+        // collected. Migration writes the scoped count and legacy pickup marker
+        // together, so a missing marker here means the pickup is genuinely new.
+        if (PlayerPrefs.HasKey(KeyCountPreferenceKey(dungeonId, levelNumber)))
+        {
+            return false;
+        }
+
+        if (!IsLegacyPickup(dungeonId, levelNumber, pickupId))
+        {
+            return false;
+        }
+
+        bool legacyKeyCollected =
+            PlayerPrefs.GetInt($"Jump.BronzeKey.{levelNumber}", 0) != 0;
+        bool legacyChestOpened =
+            PlayerPrefs.GetInt($"Jump.ChestOpened.{levelNumber}", 0) != 0;
+        if (!legacyKeyCollected && !legacyChestOpened) return false;
+
+        WritePersistedPickupCollected(dungeonId, levelNumber, pickupId);
+        if (!PlayerPrefs.HasKey(KeyCountPreferenceKey(dungeonId, levelNumber)))
+        {
+            WritePersistedKeyCount(dungeonId, levelNumber,
+                legacyKeyCollected && !legacyChestOpened ? 1 : 0);
+        }
+        PlayerPrefs.Save();
+        return true;
+    }
+
+    private static bool LoadPersistedChestOpened(string dungeonId, int levelNumber,
+        string chestId)
+    {
+        string preferenceKey = ChestPreferenceKey(dungeonId, levelNumber, chestId);
+        if (PlayerPrefs.GetInt(preferenceKey, 0) != 0) return true;
+
+        if (!IsLegacyChest(dungeonId, levelNumber, chestId) ||
+            PlayerPrefs.GetInt($"Jump.ChestOpened.{levelNumber}", 0) == 0)
+        {
+            return false;
+        }
+
+        WritePersistedChestOpened(dungeonId, levelNumber, chestId);
+        PlayerPrefs.Save();
+        return true;
+    }
+
+    private static void WritePersistedKeyCount(string dungeonId, int levelNumber, int count)
+    {
+        int safeCount = Mathf.Max(0, count);
+        PlayerPrefs.SetInt(KeyCountPreferenceKey(dungeonId, levelNumber), safeCount);
+        if (IsLegacyBronzeScope(dungeonId, levelNumber))
+        {
+            PlayerPrefs.SetInt($"Jump.BronzeKey.{levelNumber}", safeCount > 0 ? 1 : 0);
+        }
+    }
+
+    private static void WritePersistedPickupCollected(string dungeonId, int levelNumber,
+        string pickupId)
+    {
+        PlayerPrefs.SetInt(PickupPreferenceKey(dungeonId, levelNumber, pickupId), 1);
+    }
+
+    private static void WritePersistedChestOpened(string dungeonId, int levelNumber,
+        string chestId)
+    {
+        PlayerPrefs.SetInt(ChestPreferenceKey(dungeonId, levelNumber, chestId), 1);
+        if (IsLegacyChest(dungeonId, levelNumber, chestId))
+        {
+            PlayerPrefs.SetInt($"Jump.ChestOpened.{levelNumber}", 1);
+        }
+    }
+
+    private static void ClearPlaytestInventory()
+    {
+        PlaytestKeyCounts.Clear();
+        PlaytestCollectedPickups.Clear();
+        PlaytestOpenedChests.Clear();
     }
 }

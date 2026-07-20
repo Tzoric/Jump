@@ -30,21 +30,32 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         LevelEntranceDoor entranceDoor = FindFirstObjectByType<LevelEntranceDoor>();
         LevelExitDoor exitDoor = FindFirstObjectByType<LevelExitDoor>();
         MineRunInventory inventory = FindFirstObjectByType<MineRunInventory>();
+        BronzeKeyCollectible authoredKey = FindFirstObjectByType<BronzeKeyCollectible>();
         RewardChest chest = FindFirstObjectByType<RewardChest>();
         MineLevelMenuController levelMenu = FindFirstObjectByType<MineLevelMenuController>();
+        MidLevelShopController midLevelShop = FindFirstObjectByType<MidLevelShopController>();
         ParachuteDescentController parachute = FindFirstObjectByType<ParachuteDescentController>();
+        HangGliderVisualController gliderVisual = FindFirstObjectByType<HangGliderVisualController>();
         AutomatedPlaytestWaypoint[] waypoints =
             FindObjectsByType<AutomatedPlaytestWaypoint>(FindObjectsSortMode.None);
 
         Rigidbody2D movementBody = movement == null ? null : movement.GetComponent<Rigidbody2D>();
         bool referencesPresent = health != null && weight != null && movement != null && movementBody != null &&
             outfitVisual != null && entranceDoor != null && exitDoor != null && inventory != null &&
-            chest != null && levelMenu != null &&
-            parachute != null && waypoints.Length == 11;
+            authoredKey != null && chest != null && levelMenu != null && midLevelShop != null &&
+            parachute != null && gliderVisual != null && waypoints.Length >= 11 && health.MaxHealth == 7;
+        MineDoorAnimator entranceDoorAnimator = entranceDoor == null
+            ? null
+            : entranceDoor.GetComponentInChildren<MineDoorAnimator>(true);
+        MineDoorAnimator exitDoorAnimator = exitDoor == null
+            ? null
+            : exitDoor.GetComponentInChildren<MineDoorAnimator>(true);
         bool entranceDoorPassed = referencesPresent && entranceDoor.Hero == movement &&
             entranceDoor.IsComplete && entranceDoor.EntranceSeconds >= .5f &&
             entranceDoor.GetComponentsInChildren<Collider2D>(true).Length == 0 &&
-            Vector2.Distance(entranceDoor.GameplayPosition, movement.transform.position) <= .1f;
+            Vector2.Distance(entranceDoor.GameplayPosition, movement.transform.position) <= .1f &&
+            DoorAnimatorConfigured(entranceDoorAnimator) && entranceDoorAnimator.HasOpened &&
+            !entranceDoorAnimator.IsOpen;
         bool damagePassed = false;
         bool damageVisualRestorationPassed = false;
         bool healingPassed = false;
@@ -59,16 +70,23 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             MineInput.GetDefaultControllerBindingPath(MineButtonAction.Pause) == "<Gamepad>/start" &&
             MineInput.GetDefaultControllerBindingPath(MineButtonAction.Home) == "<Gamepad>/select" &&
             MineInput.GetActionName(MineButtonAction.Jump) == "JUMP" &&
-            MineInput.GetActionName(MineButtonAction.Interact) == "INTERACT / PARACHUTE";
+            MineInput.GetActionName(MineButtonAction.Interact).StartsWith("INTERACT", StringComparison.Ordinal) &&
+            (MineInput.GetActionName(MineButtonAction.Interact).Contains("PARACHUTE") ||
+             MineInput.GetActionName(MineButtonAction.Interact).Contains("GLIDER"));
         bool parachuteInputSeparationPassed = false;
+        bool gliderVerticalModesPassed = false;
+        bool gliderVisualStatesPassed = false;
         bool spikeHitboxShapePassed = VerifySpikeHitboxGeometry();
         bool pauseMenuPassed = false;
+        bool midLevelShopPassed = false;
         bool deathActionLockPassed = false;
         bool weightPassed = false;
         bool exitConfiguredPassed = false;
         bool exitDoorInteractionPassed = false;
         bool gameOverProgressResetPassed = VerifyGameOverProgressReset();
         bool playtestUnlockEasterEggPassed = VerifyPlaytestUnlockEasterEgg();
+        bool scopedCountedInventoryPassed = VerifyScopedCountedInventory();
+        bool playtestCheatsPassed = false;
         bool wallContactReleasePassed = false;
         bool emptyHeartDisplayPassed = false;
         bool chestInteractionPassed = false;
@@ -267,7 +285,8 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             movementBody.linearVelocity = Vector2.zero;
             Physics2D.SyncTransforms();
             movement.EnableAutomatedControl(true);
-            parachute.EnterDescentZone(120f);
+            parachute.ResetDescentState();
+            movement.SetAutomatedInput(0f, false, false, false);
             yield return null;
             yield return null;
 
@@ -276,32 +295,104 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             yield return null;
             bool jumpDidNotDeploy = !parachute.IsDeployed;
 
-            parachute.ExitDescentZone();
-            parachute.EnterLaunchArea();
             movement.SetAutomatedInput(0f, false, false, false);
             yield return null;
             movement.SetAutomatedInput(0f, false, false, true);
             yield return null;
             yield return null;
-            bool launchAreaArmed = parachute.IsDeploymentRequested;
-            parachute.ExitLaunchArea();
+            bool deployedAnywhere = parachute.IsDeploymentRequested && parachute.IsDeployed &&
+                !parachute.IsInLaunchArea && !parachute.IsInDescentZone;
+
+            movement.SetAutomatedInput(0f, false, false, true, 1f);
+            yield return null;
+            yield return null;
+            bool hoverVisual = gliderVisual.CurrentState == HangGliderVisualState.Hover &&
+                gliderVisual.GliderRenderer.sprite == gliderVisual.HoverFrontSprite &&
+                !gliderVisual.GliderRenderer.flipX &&
+                gliderVisual.HasAlignedGripAnchor && gliderVisual.GripAnchorError <= .002f &&
+                outfitVisual.IsFlightPoseActive &&
+                outfitVisual.CurrentPerspective == MinerOutfitVisual.Perspective.TowardCamera &&
+                outfitVisual.CurrentAnimationRow == 3;
+            int hoverStartFrame = gliderVisual.CurrentFrame;
+            float flapUntil = Time.unscaledTime + .25f;
+            while (Time.unscaledTime < flapUntil) yield return null;
+            bool wingFlapped = gliderVisual.CurrentFrame != hoverStartFrame ||
+                Mathf.Abs(gliderVisual.WingFlexAmount) > .002f;
+
+            movementBody.linearVelocity = Vector2.zero;
+            movement.SetAutomatedInput(0f, false, false, true, 0f);
+            yield return null;
+            yield return null;
+            bool floatVisual = gliderVisual.CurrentState == HangGliderVisualState.Float &&
+                gliderVisual.GliderRenderer.sprite == gliderVisual.FloatRightSprite &&
+                !gliderVisual.GliderRenderer.flipX &&
+                gliderVisual.HasAlignedGripAnchor && gliderVisual.GripAnchorError <= .002f &&
+                outfitVisual.CurrentPerspective == MinerOutfitVisual.Perspective.Side &&
+                outfitVisual.CurrentAnimationFrame == 3;
+
+            movement.SetAutomatedInput(0f, false, false, true, -1f);
+            yield return null;
+            yield return null;
+            bool diveVisual = gliderVisual.CurrentState == HangGliderVisualState.Dive &&
+                gliderVisual.GliderRenderer.sprite == gliderVisual.DiveRightSprite &&
+                !gliderVisual.GliderRenderer.flipX &&
+                gliderVisual.HasAlignedGripAnchor && gliderVisual.GripAnchorError <= .002f &&
+                outfitVisual.CurrentAnimationFrame == 4;
+
+            movement.SetAutomatedInput(-1f, false, false, true, 0f);
+            yield return null;
+            yield return null;
+            bool leftVisual = gliderVisual.CurrentState == HangGliderVisualState.GlideLeft &&
+                gliderVisual.GliderRenderer.sprite == gliderVisual.BankRightSprite &&
+                gliderVisual.IsFacingLeft && gliderVisual.GliderRenderer.flipX &&
+                gliderVisual.HasAlignedGripAnchor && gliderVisual.GripAnchorError <= .002f;
+
+            movement.SetAutomatedInput(1f, false, false, true, 0f);
+            yield return null;
+            yield return null;
+            bool rightVisual = gliderVisual.CurrentState == HangGliderVisualState.GlideRight &&
+                gliderVisual.GliderRenderer.sprite == gliderVisual.BankRightSprite &&
+                !gliderVisual.IsFacingLeft && !gliderVisual.GliderRenderer.flipX &&
+                gliderVisual.HasAlignedGripAnchor && gliderVisual.GripAnchorError <= .002f;
+            gliderVisualStatesPassed = gliderVisual.HasCompleteDirectionalArt && hoverVisual &&
+                floatVisual && diveVisual && leftVisual && rightVisual && wingFlapped;
+
+            movement.SetAutomatedInput(0f, false, false, true, 0f);
+            gliderVerticalModesPassed = VerifyGliderVerticalPhysics(parachute, movementBody);
+
             parachute.EnterDescentZone(120f);
+            movementBody.linearVelocity = new Vector2(movementBody.linearVelocity.x, -1f);
             yield return null;
-            bool interactDeployed = launchAreaArmed && parachute.IsDeployed && parachute.IsInDescentZone &&
-                Mathf.Approximately(parachute.DescentCenterX, 120f);
+            bool zoneOnlyChangedCamera = parachute.IsDeployed && parachute.IsInDescentZone &&
+                parachute.IsCameraTrackingDescent && Mathf.Approximately(parachute.DescentCenterX, 120f);
+            parachute.ExitDescentZone();
+            yield return null;
+            bool leavingZoneKeptGlider = parachute.IsDeployed && !parachute.IsInDescentZone &&
+                !parachute.IsCameraTrackingDescent;
 
             movement.SetAutomatedInput(0f, false, false, false);
             yield return null;
             movement.SetAutomatedInput(0f, false, false, true);
             yield return null;
-            bool secondPressFastDrop = !parachute.IsDeployed && !parachute.IsDeploymentRequested;
+            bool secondPressClosedGlider = !parachute.IsDeployed && !parachute.IsDeploymentRequested;
+            gliderVisualStatesPassed &= gliderVisual.CurrentState == HangGliderVisualState.Stowed &&
+                !gliderVisual.GliderRenderer.enabled && !outfitVisual.IsFlightPoseActive &&
+                outfitVisual.CurrentPerspective == MinerOutfitVisual.Perspective.Side;
 
-            parachute.ExitDescentZone();
+            parachute.ResetDescentState();
             yield return null;
-            bool landingReleasedJump = !parachute.IsDeployed && !parachute.IsInDescentZone &&
+            bool resetReleasedJump = !parachute.IsDeployed && !parachute.IsInDescentZone &&
                 !movement.IsJumpSuppressed;
-            parachuteInputSeparationPassed = jumpDidNotDeploy && interactDeployed &&
-                secondPressFastDrop && landingReleasedJump;
+            parachuteInputSeparationPassed = jumpDidNotDeploy && deployedAnywhere &&
+                zoneOnlyChangedCamera && leavingZoneKeptGlider && secondPressClosedGlider &&
+                resetReleasedJump;
+            if (!parachuteInputSeparationPassed)
+            {
+                Debug.LogWarning($"Glider toggle diagnostics: jumpDidNotDeploy={jumpDidNotDeploy}, " +
+                    $"deployedAnywhere={deployedAnywhere}, zoneOnlyChangedCamera={zoneOnlyChangedCamera}, " +
+                    $"leavingZoneKeptGlider={leavingZoneKeptGlider}, " +
+                    $"secondPressClosedGlider={secondPressClosedGlider}, resetReleasedJump={resetReleasedJump}.");
+            }
             movement.SetAutomatedInput(0f, false);
             movement.EnableAutomatedControl(false);
             movementBody.position = beforeParachutePosition;
@@ -365,11 +456,13 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
                 inventory.StatusText == RewardChest.LockedPrompt;
 
             inventory.CollectBronzeKey();
+            int keysBeforeOpen = inventory.KeyCount;
             bool openedWithKey = chest.TryInteract(inventory, .25f);
             Collider2D chestTrigger = chest.GetComponent<Collider2D>();
             SpriteRenderer chestRenderer = chest.GetComponent<SpriteRenderer>();
             bool awardedOnce = openedWithKey && GameProgress.Crystals == crystalsBefore + 5 &&
-                chest.IsOpened && GameProgress.IsChestOpened(chest.LevelNumber) &&
+                keysBeforeOpen == 1 && inventory.KeyCount == 0 && chest.IsOpened &&
+                GameProgress.IsChestOpened(chest.DungeonId, chest.LevelNumber, chest.ChestId) &&
                 chest.OpenedSprite != null && chestRenderer.sprite == chest.OpenedSprite &&
                 chestTrigger.enabled && chestTrigger.isTrigger;
 
@@ -382,14 +475,14 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             replayRenderer.sprite = chestRenderer.sprite;
             replayChestObject.AddComponent<BoxCollider2D>().isTrigger = true;
             RewardChest replayChest = replayChestObject.AddComponent<RewardChest>();
-            replayChest.Configure(chest.LevelNumber, chest.OpenedSprite);
+            replayChest.Configure(chest.DungeonId, chest.LevelNumber, chest.ChestId, chest.OpenedSprite);
             bool replayVisualRestored = replayChest.IsOpened && replayRenderer.sprite == chest.OpenedSprite &&
                 replayChestObject.GetComponent<Collider2D>().enabled;
 
             GameObject replayKeyObject = new("Smoke Test Replayed Bronze Key");
             replayKeyObject.AddComponent<CircleCollider2D>().isTrigger = true;
             BronzeKeyCollectible replayKey = replayKeyObject.AddComponent<BronzeKeyCollectible>();
-            replayKey.Configure(chest.LevelNumber);
+            replayKey.Configure(authoredKey.DungeonId, authoredKey.LevelNumber, authoredKey.PickupId);
             bool collectedKeyStayedHidden = !replayKeyObject.activeSelf;
 
             chestInteractionPassed = contactDidNotOpen && lockedInteractionRejected && awardedOnce &&
@@ -408,6 +501,18 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             pauseMenuPassed = pausedStateApplied && !MineLevelMenuController.IsPaused &&
                 Mathf.Approximately(Time.timeScale, 1f) && !levelMenu.PausePanel.activeSelf &&
                 levelMenu.HomeScene == MineLevelMenuController.DefaultHomeScene;
+
+            Vector3 beforeShopPosition = movement.transform.position;
+            levelMenu.OpenShop();
+            bool shopOpenedInPlace = MineLevelMenuController.IsPaused && levelMenu.IsShopVisible &&
+                midLevelShop.IsShopVisible && midLevelShop.ShopPanel.activeSelf &&
+                !levelMenu.PausePanel.activeSelf && Mathf.Approximately(Time.timeScale, 0f) &&
+                movement.transform.position == beforeShopPosition;
+            levelMenu.CloseShop();
+            midLevelShopPassed = shopOpenedInPlace && !MineLevelMenuController.IsPaused &&
+                !levelMenu.IsShopVisible && !midLevelShop.ShopPanel.activeSelf &&
+                Mathf.Approximately(Time.timeScale, 1f) &&
+                movement.transform.position == beforeShopPosition;
 
             float damageLockDeadline = Time.time + 1.5f;
             while (health.IsInvulnerable && Time.time < damageLockDeadline) yield return null;
@@ -436,6 +541,8 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
                 lifeWasConsumed && respawnVisualRestored && potionCleanedUp &&
                 GameProgress.Lives == livesBeforeDeathLock;
 
+            playtestCheatsPassed = VerifyPlaytestCheats(health);
+
             movement.EnableAutomatedControl(true);
             movement.SetAutomatedInput(0f, false);
             movementBody.position = (Vector2)exitDoor.transform.position + Vector2.down * .85f;
@@ -453,16 +560,21 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             Collider2D heroBodyCollider = movement.GetComponent<Collider2D>();
             exitDoorInteractionPassed = doorContactOnlyPrompted && explicitDoorInteractionStarted &&
                 exitDoor.IsUsed && movementBody.bodyType == RigidbodyType2D.Kinematic &&
-                heroBodyCollider != null && !heroBodyCollider.enabled;
+                heroBodyCollider != null && !heroBodyCollider.enabled &&
+                DoorAnimatorConfigured(exitDoorAnimator) &&
+                (exitDoorAnimator.IsAnimating || exitDoorAnimator.HasOpened);
         }
 
         bool passed = referencesPresent && entranceDoorPassed && automatedJumpPassed && jumpAnticipationPassed && damagePassed &&
             damageVisualRestorationPassed &&
             healingPassed && weightPassed && exitConfiguredPassed && gameOverProgressResetPassed &&
             playtestUnlockEasterEggPassed &&
+            scopedCountedInventoryPassed && playtestCheatsPassed && gliderVerticalModesPassed &&
+            gliderVisualStatesPassed &&
             exitDoorInteractionPassed && wallContactReleasePassed && emptyHeartDisplayPassed &&
             pickRemovedPassed && chestInteractionPassed && powerRunJumpPassed && controllerBindingsPassed &&
-            parachuteInputSeparationPassed && pauseMenuPassed && deathActionLockPassed && spikeHitboxShapePassed;
+            parachuteInputSeparationPassed && pauseMenuPassed && midLevelShopPassed &&
+            deathActionLockPassed && spikeHitboxShapePassed;
         string reportPath = ReadArgument("-mechanicsReport") ??
             Path.Combine(Application.dataPath, "..", "Logs", "MineMechanicsSmokeTest.json");
         var result = new SmokeResult
@@ -478,14 +590,19 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             powerRunJumpPassed = powerRunJumpPassed,
             controllerBindingsPassed = controllerBindingsPassed,
             parachuteInputSeparationPassed = parachuteInputSeparationPassed,
+            gliderVerticalModesPassed = gliderVerticalModesPassed,
+            gliderVisualStatesPassed = gliderVisualStatesPassed,
             spikeHitboxShapePassed = spikeHitboxShapePassed,
             pauseMenuPassed = pauseMenuPassed,
+            midLevelShopPassed = midLevelShopPassed,
             deathActionLockPassed = deathActionLockPassed,
             weightCalculationPassed = weightPassed,
             exitDoorConfigured = exitConfiguredPassed,
             exitDoorInteractionPassed = exitDoorInteractionPassed,
             gameOverProgressResetPassed = gameOverProgressResetPassed,
             playtestUnlockEasterEggPassed = playtestUnlockEasterEggPassed,
+            scopedCountedInventoryPassed = scopedCountedInventoryPassed,
+            playtestCheatsPassed = playtestCheatsPassed,
             wallContactReleasePassed = wallContactReleasePassed,
             emptyHeartDisplayPassed = emptyHeartDisplayPassed,
             pickRemovedPassed = pickRemovedPassed,
@@ -507,6 +624,149 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
 #else
         Application.Quit(passed ? 0 : 3);
 #endif
+    }
+
+    private static bool VerifyGliderVerticalPhysics(ParachuteDescentController glider,
+        Rigidbody2D body)
+    {
+        if (glider == null || body == null || !glider.IsDeployed) return false;
+
+        PropertyInfo verticalProperty = typeof(ParachuteDescentController).GetProperty(
+            nameof(ParachuteDescentController.GliderVerticalInput),
+            BindingFlags.Instance | BindingFlags.Public);
+        FieldInfo verticalBackingField = typeof(ParachuteDescentController).GetField(
+            $"<{nameof(ParachuteDescentController.GliderVerticalInput)}>k__BackingField",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        MethodInfo fixedUpdate = typeof(ParachuteDescentController).GetMethod("FixedUpdate",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        if (verticalProperty == null || verticalBackingField == null || fixedUpdate == null)
+            return false;
+
+        float originalGravity = body.gravityScale;
+        Vector2 originalVelocity = body.linearVelocity;
+
+        verticalBackingField.SetValue(glider, 1f);
+        body.linearVelocity = new Vector2(0f, -3f);
+        fixedUpdate.Invoke(glider, null);
+        float hoverVelocity = body.linearVelocityY;
+        bool upHovered = glider.IsHovering && Mathf.Approximately(body.gravityScale, 0f) &&
+            hoverVelocity > -3f;
+
+        verticalBackingField.SetValue(glider, 0f);
+        body.linearVelocity = new Vector2(0f, -50f);
+        fixedUpdate.Invoke(glider, null);
+        float neutralVelocity = body.linearVelocityY;
+        bool neutralGlided = Mathf.Abs(neutralVelocity + glider.DeployedTerminalSpeed) <= .05f &&
+            body.gravityScale > 0f && body.gravityScale < glider.FastDescentGravity;
+
+        verticalBackingField.SetValue(glider, -1f);
+        body.linearVelocity = new Vector2(0f, -50f);
+        fixedUpdate.Invoke(glider, null);
+        float downVelocity = body.linearVelocityY;
+        bool downDescendedFaster = Mathf.Abs(downVelocity + glider.FastDescentTerminalSpeed) <= .05f &&
+            downVelocity < neutralVelocity &&
+            Mathf.Approximately(body.gravityScale, glider.FastDescentGravity);
+
+        verticalBackingField.SetValue(glider, 0f);
+        body.gravityScale = originalGravity;
+        body.linearVelocity = originalVelocity;
+        return upHovered && neutralGlided && downDescendedFaster;
+    }
+
+    private static bool DoorAnimatorConfigured(MineDoorAnimator animator)
+    {
+        return animator != null && animator.ClosedRenderer != null && animator.OpenRenderer != null &&
+            animator.ClosedRenderer != animator.OpenRenderer &&
+            animator.ClosedRenderer.sprite != null && animator.OpenRenderer.sprite != null &&
+            animator.OpeningSeconds >= .2f;
+    }
+
+    private static bool VerifyScopedCountedInventory()
+    {
+        GameProgress.SetPlaytestAccess(false);
+        GameProgress.SetPlaytestAccess(true);
+        if (!GameProgress.BeginPlaytestRun())
+        {
+            GameProgress.SetPlaytestAccess(false);
+            return false;
+        }
+
+        const string dungeon = GameProgress.SilverDungeonId;
+        const int level = 1;
+        const string keyA = "mechanics-smoke-silver-key-a";
+        const string keyB = "mechanics-smoke-silver-key-b";
+        const string chestA = "mechanics-smoke-silver-chest-a";
+        const string chestB = "mechanics-smoke-silver-chest-b";
+        const string chestC = "mechanics-smoke-silver-chest-c";
+        int bronzeBefore = GameProgress.GetKeyCount(GameProgress.BronzeDungeonId, level);
+
+        bool firstCollected = GameProgress.TryCollectKey(dungeon, level, keyA);
+        bool secondCollected = GameProgress.TryCollectKey(dungeon, level, keyB);
+        bool duplicateRejected = !GameProgress.TryCollectKey(dungeon, level, keyA);
+        bool countedTwo = GameProgress.GetKeyCount(dungeon, level) == 2;
+        bool firstOpened = GameProgress.TryUnlockChest(dungeon, level, chestA) &&
+            GameProgress.GetKeyCount(dungeon, level) == 1 &&
+            GameProgress.IsChestOpened(dungeon, level, chestA);
+        bool replayRejected = !GameProgress.TryUnlockChest(dungeon, level, chestA) &&
+            GameProgress.GetKeyCount(dungeon, level) == 1;
+        bool secondOpened = GameProgress.TryUnlockChest(dungeon, level, chestB) &&
+            GameProgress.GetKeyCount(dungeon, level) == 0 &&
+            GameProgress.IsChestOpened(dungeon, level, chestB);
+        bool noFreeThirdChest = !GameProgress.TryUnlockChest(dungeon, level, chestC) &&
+            !GameProgress.IsChestOpened(dungeon, level, chestC);
+        bool bronzeScopeUnaffected = GameProgress.GetKeyCount(GameProgress.BronzeDungeonId, level) ==
+            bronzeBefore;
+
+        GameProgress.EndPlaytestRun();
+        GameProgress.SetPlaytestAccess(false);
+        return firstCollected && secondCollected && duplicateRejected && countedTwo &&
+            firstOpened && replayRejected && secondOpened && noFreeThirdChest && bronzeScopeUnaffected;
+    }
+
+    private static bool VerifyPlaytestCheats(PlayerHealth health)
+    {
+        if (health == null) return false;
+        GameProgress.SetPlaytestAccess(false);
+        GameProgress.SetPlaytestAccess(true);
+        if (!GameProgress.BeginPlaytestRun())
+        {
+            GameProgress.SetPlaytestAccess(false);
+            return false;
+        }
+
+        PlaytestCheatController cheats = FindFirstObjectByType<PlaytestCheatController>();
+        if (cheats == null)
+        {
+            GameProgress.EndPlaytestRun();
+            GameProgress.SetPlaytestAccess(false);
+            return false;
+        }
+
+        MethodInfo acceptCharacter = typeof(PlaytestCheatController).GetMethod("AcceptCharacter",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        if (acceptCharacter == null)
+        {
+            GameProgress.EndPlaytestRun();
+            GameProgress.SetPlaytestAccess(false);
+            return false;
+        }
+
+        health.RestoreToFullHealth();
+        ExpireInvulnerabilityForRegression(health);
+        bool damageAccepted = health.TakeDamage(1, health.transform.position);
+        foreach (char character in "HEALTH") acceptCharacter.Invoke(cheats, new object[] { character });
+        bool healthRestored = damageAccepted && health.CurrentHealth == health.MaxHealth &&
+            cheats.PendingCommand.Length == 0;
+
+        int livesBefore = GameProgress.Lives;
+        foreach (char character in "LIFE") acceptCharacter.Invoke(cheats, new object[] { character });
+        bool livesGranted = GameProgress.Lives == livesBefore + 10 && cheats.PendingCommand.Length == 0;
+
+        GameProgress.EndPlaytestRun();
+        GameProgress.SetPlaytestAccess(false);
+        health.RestoreToFullHealth();
+        health.RefreshHud();
+        return healthRestored && livesGranted;
     }
 
     private static string ReadArgument(string name)
@@ -579,6 +839,10 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             GameProgress.CollectBronzeKey(levelNumber);
             GameProgress.MarkChestOpened(levelNumber);
         }
+        const string silverResetKey = "mechanics-smoke-reset-silver-key";
+        const string silverResetChest = "mechanics-smoke-reset-silver-chest";
+        GameProgress.TryCollectKey(GameProgress.SilverDungeonId, 1, silverResetKey);
+        GameProgress.TryUnlockChest(GameProgress.SilverDungeonId, 1, silverResetChest);
 
         GameProgress.RestartAfterGameOver();
 
@@ -588,7 +852,10 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
             GameProgress.MaxHearts != GameProgress.BaseHearts ||
             GameProgress.HighestUnlockedLevel != 2 ||
             GameProgress.HasSilverKey || GameProgress.PlaytestAccessEnabled ||
-            GameProgress.IsPlaytestRunActive)
+            GameProgress.IsPlaytestRunActive ||
+            GameProgress.GetKeyCount(GameProgress.SilverDungeonId, 1) != 0 ||
+            GameProgress.IsKeyPickupCollected(GameProgress.SilverDungeonId, 1, silverResetKey) ||
+            GameProgress.IsChestOpened(GameProgress.SilverDungeonId, 1, silverResetChest))
         {
             return false;
         }
@@ -713,14 +980,19 @@ public sealed class MineMechanicsSmokeTester : MonoBehaviour
         public bool powerRunJumpPassed;
         public bool controllerBindingsPassed;
         public bool parachuteInputSeparationPassed;
+        public bool gliderVerticalModesPassed;
+        public bool gliderVisualStatesPassed;
         public bool spikeHitboxShapePassed;
         public bool pauseMenuPassed;
+        public bool midLevelShopPassed;
         public bool deathActionLockPassed;
         public bool weightCalculationPassed;
         public bool exitDoorConfigured;
         public bool exitDoorInteractionPassed;
         public bool gameOverProgressResetPassed;
         public bool playtestUnlockEasterEggPassed;
+        public bool scopedCountedInventoryPassed;
+        public bool playtestCheatsPassed;
         public bool wallContactReleasePassed;
         public bool emptyHeartDisplayPassed;
         public bool pickRemovedPassed;

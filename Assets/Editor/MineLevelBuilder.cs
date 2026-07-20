@@ -14,7 +14,7 @@ using UnityEngine.UI;
 
 public static class MineLevelBuilder
 {
-    private enum ShaftDirection { Vertical, Angled, Horizontal, Mixed }
+    private enum ShaftDirection { Vertical, Angled, Horizontal, Descent, Mixed }
 
     private readonly struct LevelSpec
     {
@@ -74,7 +74,7 @@ public static class MineLevelBuilder
     {
         new(1, "Level1_TheMines", "BRONZE SHAFT", ShaftDirection.Vertical, 11),
         new(2, "Level2_SlidingAscent", "SLIDING ASCENT", ShaftDirection.Angled, 6),
-        new(3, "Level3_ChasmRun", "CHASM RUN", ShaftDirection.Horizontal, 9),
+        new(3, "Level3_ChasmRun", "CHASM DROP", ShaftDirection.Descent, 7),
         new(4, "Level4_CopperColumn", "COPPER COLUMN", ShaftDirection.Vertical, 16),
         new(5, "Level5_CrookedIncline", "CROOKED INCLINE", ShaftDirection.Angled, 10),
         new(6, "Level6_BrokenRail", "BROKEN RAIL", ShaftDirection.Horizontal, 12),
@@ -114,6 +114,42 @@ public static class MineLevelBuilder
     private const string SilverKeyPath = Art + "/SilverKey.png";
     private const string ChestPath = Art + "/BronzeRewardChest.png";
     private const string OpenChestPath = Art + "/BronzeRewardChestOpen.png";
+    private const string SilverArt = "Assets/Art/Silver";
+    private const string SharedRockFillPath = SilverArt + "/SharedCaveRockTile.png";
+    private const string RockEdgePath = SilverArt + "/RockEdgeTile.png";
+    private const string RockCornerPath = SilverArt + "/RockCornerTile.png";
+    private const string PolishedSpikePath = SilverArt + "/PolishedBronzeSpikes.png";
+    private const string CutGemPath = SilverArt + "/TintableCutGem.png";
+    private const string BoundChestPath = SilverArt + "/SilverBoundChestClosed.png";
+    private const string BoundChestOpenPath = SilverArt + "/SilverBoundChestOpen.png";
+    private const string PolishedKeyPath = SilverArt + "/SilverChestKey.png";
+    private const string HangGliderPath = SilverArt + "/MinerHangGlider.png";
+    private const string HangGliderFloatRightPath = SilverArt + "/HangGliderFloatRight.png";
+    private const string HangGliderDiveRightPath = SilverArt + "/HangGliderDiveRight.png";
+    private const string HangGliderBankRightPath = SilverArt + "/HangGliderBankRight.png";
+    private const string DoorOpenPath = SilverArt + "/MineDoorOpen.png";
+    private const string BronzeThemePath = Art + "/BronzeDungeonTheme.asset";
+    private const string SilverThemePath = SilverArt + "/SilverDungeonTheme.asset";
+    private const string SilverOverviewPath = "Assets/Scenes/SilverDungeonOverview.unity";
+    private const string SilverLevel1Path = "Assets/Scenes/SilverLevel1_SilverLode.unity";
+
+    private static DungeonVisualTheme activeTheme;
+    private static string activeThemeAssetPath;
+    private static Sprite rockEdgeSprite;
+    private static Sprite rockCornerSprite;
+
+    private static DungeonVisualTheme CurrentTheme
+    {
+        get
+        {
+            // Opening/saving many editor scenes can unload a ScriptableObject even
+            // while its managed wrapper remains in this static field. Reloading by
+            // path keeps every generated surface bound to the one theme asset.
+            if (activeTheme == null && !string.IsNullOrEmpty(activeThemeAssetPath))
+                activeTheme = AssetDatabase.LoadAssetAtPath<DungeonVisualTheme>(activeThemeAssetPath);
+            return activeTheme;
+        }
+    }
 
     private static readonly Color32 Amber = new(244, 180, 82, 255);
     private static readonly Color32 Bronze = new(184, 113, 58, 255);
@@ -127,33 +163,66 @@ public static class MineLevelBuilder
 
         Sprite miner = ImportSprite(MinerCharacterPath, 1024f);
         Sprite animationSheet = ImportSprite(MinerAnimationSheetPath, 220f, true);
-        Sprite parachute = ImportSprite(ParachutePath, 32f);
+        Sprite parachute = ImportSprite(HangGliderPath, 800f, false, false, true);
+        Sprite gliderFloatRight = ImportSprite(HangGliderFloatRightPath, 800f, false, false, true);
+        Sprite gliderDiveRight = ImportSprite(HangGliderDiveRightPath, 800f, false, false, true);
+        Sprite gliderBankRight = ImportSprite(HangGliderBankRightPath, 800f, false, false, true);
         CharacterOutfitDefinition minerOutfit = EnsureOutfitDefinition(animationSheet, null);
         PhysicsMaterial2D slideMaterial = EnsureSlideMaterial();
         PhysicsMaterial2D heroMaterial = EnsureHeroMaterial();
-        GameObject heroPrefab = EnsureHeroPrefab(miner, minerOutfit, parachute, heroMaterial);
+        GameObject heroPrefab = EnsureHeroPrefab(miner, minerOutfit, parachute,
+            gliderFloatRight, gliderDiveRight, gliderBankRight, heroMaterial);
+        Sprite sharedRock = ImportSprite(SharedRockFillPath, 256f, false, true, true);
+        rockEdgeSprite = ImportSprite(RockEdgePath, 512f, false, true, true);
+        rockCornerSprite = ImportSprite(RockCornerPath, 512f, false, false, true);
+        Sprite polishedSpike = ImportSprite(PolishedSpikePath, 800f, false, false, true);
+        Sprite cutGem = ImportSprite(CutGemPath, 800f, false, false, true);
+        Sprite boundChest = ImportSprite(BoundChestPath, 600f, false, false, true);
+        Sprite boundChestOpen = ImportSprite(BoundChestOpenPath, 600f, false, false, true);
+        Sprite polishedKey = ImportSprite(PolishedKeyPath, 700f, false, false, true);
+        Sprite closedDoor = ImportSprite(DoorPath, 256f, false, false, true);
+        Sprite openDoor = ImportSprite(DoorOpenPath, 256f, false, false, true);
+
+        DungeonVisualTheme bronzeTheme = EnsureDungeonTheme(BronzeThemePath,
+            GameProgress.BronzeDungeonId, "Bronze Mines", new Color32(112, 98, 88, 255),
+            new Color32(72, 38, 21, 255), new Color32(180, 99, 48, 255),
+            new Color32(250, 178, 89, 255), new Color32(255, 239, 186, 255),
+            sharedRock, polishedSpike, cutGem, polishedKey, boundChest, boundChestOpen,
+            closedDoor, openDoor, parachute, .34f, 1701);
+        DungeonVisualTheme silverTheme = EnsureDungeonTheme(SilverThemePath,
+            GameProgress.SilverDungeonId, "Silver Lode", new Color32(111, 119, 129, 255),
+            new Color32(58, 67, 79, 255), new Color32(166, 181, 199, 255),
+            new Color32(235, 245, 255, 255), new Color32(255, 255, 255, 255),
+            sharedRock, polishedSpike, cutGem, polishedKey, boundChest, boundChestOpen,
+            closedDoor, openDoor, parachute, .48f, 2701);
+
         ArtSet art = new(
-            ImportSprite(PlatformPath, 16f), ImportSprite(GreenGemPath, 24f),
-            ImportSprite(BlueGemPath, 24f), ImportSprite(PurpleGemPath, 24f),
-            ImportSprite(SpikePath, 24f), ImportSprite(DoorPath, 256f),
+            sharedRock, cutGem, cutGem, cutGem, polishedSpike, closedDoor,
             ImportSprite(BackdropPath, 32f), ImportSprite(DiagonalBackdropPath, 32f),
             ImportSprite(FarCaveBackdropPath, 8f, false, true),
             ImportSprite(MixedHorizontalBackdropPath, 8f, false, true),
             ImportSprite(MixedVerticalBackdropPath, 8f, false, true),
             ImportSprite(MixedDiagonalBackdropPath, 8f, false, true),
-            ImportSprite(MixedDescentBackdropPath, 8f, false, true), ImportSprite(BronzeKeyPath, 24f),
-            ImportSprite(SilverKeyPath, 24f), ImportSprite(ChestPath, 24f), ImportSprite(OpenChestPath, 24f));
+            ImportSprite(MixedDescentBackdropPath, 8f, false, true), polishedKey,
+            polishedKey, boundChest, boundChestOpen);
         Sprite overview = ImportSprite(OverviewBackdropPath, 100f);
 
+        activeThemeAssetPath = BronzeThemePath;
+        activeTheme = bronzeTheme;
         foreach (LevelSpec level in Levels)
         {
             if (level.Number == 1) BuildLevel1(level, heroPrefab, art);
             else if (level.Number == 2) BuildLevel2(level, heroPrefab, art, slideMaterial);
+            else if (level.Number == 3) BuildLevel3(level, heroPrefab, art);
             else if (level.Number == 12) BuildLevel12(level, heroPrefab, art);
             else BuildGeneratedLevel(level, heroPrefab, art);
         }
         BuildOverview(overview);
         BuildGameOver(overview);
+        activeThemeAssetPath = SilverThemePath;
+        activeTheme = silverTheme;
+        BuildSilverLevel1(heroPrefab, art);
+        BuildSilverOverview(sharedRock);
 
         var buildScenes = new List<EditorBuildSettingsScene>
         {
@@ -161,22 +230,58 @@ public static class MineLevelBuilder
             new(GameOverPath, true)
         };
         foreach (LevelSpec level in Levels) buildScenes.Add(new EditorBuildSettingsScene(level.Path, true));
+        buildScenes.Add(new EditorBuildSettingsScene(SilverOverviewPath, true));
+        buildScenes.Add(new EditorBuildSettingsScene(SilverLevel1Path, true));
         EditorBuildSettings.scenes = buildScenes.ToArray();
 
         AssetDatabase.SaveAssets();
-        EditorSceneManager.OpenScene(OverviewPath, OpenSceneMode.Single);
-        Debug.Log("Built Dungeon 1 — Bronze Mines: overview, shop, and Levels 1-12 including the mixed Deepworks Gauntlet.");
+        EditorSceneManager.OpenScene(SilverOverviewPath, OpenSceneMode.Single);
+        Debug.Log("Built Dungeon 1 — Bronze Mines and Dungeon 2 — Silver Lode Level 1, including shared themed rock tiles and gameplay systems.");
     }
 
     private static void EnsureFolders()
     {
         EnsureFolder("Assets", "Art"); EnsureFolder("Assets/Art", "Generated");
+        EnsureFolder("Assets/Art", "Silver");
         EnsureFolder("Assets", "PreFabs"); EnsureFolder("Assets", "Scenes");
     }
 
     private static void EnsureFolder(string parent, string child)
     {
         if (!AssetDatabase.IsValidFolder($"{parent}/{child}")) AssetDatabase.CreateFolder(parent, child);
+    }
+
+    private static DungeonVisualTheme EnsureDungeonTheme(string assetPath, string dungeonId,
+        string displayName, Color rock, Color metalShadow, Color metalBase,
+        Color metalHighlight, Color metalGlint, Sprite rockFill, Sprite spikes,
+        Sprite gem, Sprite key, Sprite chestClosed, Sprite chestOpen,
+        Sprite doorClosed, Sprite doorOpen, Sprite glider, float flakeDensity, int flakeSeed)
+    {
+        DungeonVisualTheme theme = AssetDatabase.LoadAssetAtPath<DungeonVisualTheme>(assetPath);
+        if (theme == null)
+        {
+            theme = ScriptableObject.CreateInstance<DungeonVisualTheme>();
+            AssetDatabase.CreateAsset(theme, assetPath);
+        }
+
+        theme.ConfigureIdentity(dungeonId, displayName);
+        Color ambient = dungeonId == GameProgress.SilverDungeonId
+            ? new Color32(174, 192, 220, 255)
+            : new Color32(151, 142, 132, 255);
+        Color accent = dungeonId == GameProgress.SilverDungeonId
+            ? new Color32(154, 207, 255, 255)
+            : new Color32(255, 174, 91, 255);
+        theme.ConfigurePalette(rock, metalShadow, metalBase, metalHighlight, metalGlint,
+            ambient, metalHighlight, accent);
+        Sprite customFlake = theme.MetalFlakeSprite;
+        Sprite customGlint = theme.GlintSprite;
+        theme.ConfigureMetalFlakes(flakeDensity, flakeSeed, customFlake, customGlint);
+        theme.ConfigureEnvironmentSprites(rockFill, rockEdgeSprite, rockEdgeSprite,
+            rockFill, customFlake, customGlint);
+        theme.ConfigureGameplaySprites(spikes, gem, gem, gem, key, chestClosed, chestOpen,
+            doorClosed, doorOpen, glider);
+        EditorUtility.SetDirty(theme);
+        return theme;
     }
 
     private static CharacterOutfitDefinition EnsureOutfitDefinition(Sprite animationSheet, Sprite pickSprite)
@@ -223,7 +328,8 @@ public static class MineLevelBuilder
     }
 
     private static GameObject EnsureHeroPrefab(Sprite minerSprite, CharacterOutfitDefinition minerOutfit,
-        Sprite parachuteSprite, PhysicsMaterial2D heroMaterial)
+        Sprite parachuteSprite, Sprite gliderFloatRight, Sprite gliderDiveRight,
+        Sprite gliderBankRight, PhysicsMaterial2D heroMaterial)
     {
         GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(HeroPrefabPath);
         if (prefab == null) throw new FileNotFoundException($"Missing reusable hero prefab at {HeroPrefabPath}");
@@ -253,15 +359,21 @@ public static class MineLevelBuilder
             Transform miner = CreateAccessory(root.transform, "Integrated Miner Character", minerSprite,
                 new Vector3(0f, .02f, -.01f), 10);
             miner.localScale = Vector3.one * .95f;
-            Transform parachute = CreateAccessory(root.transform, "Level 12 Parachute Canopy", parachuteSprite,
-                new Vector3(0f, 1.15f, -.025f), 9);
-            parachute.localScale = Vector3.one * 1.08f;
+            Transform parachute = CreateAccessory(root.transform, "Animated Miner Hang Glider", parachuteSprite,
+                new Vector3(0f, 1.08f, -.025f), 9);
+            parachute.localScale = Vector3.one * .92f;
             SpriteRenderer parachuteRenderer = parachute.GetComponent<SpriteRenderer>();
             parachuteRenderer.enabled = false;
-            (root.GetComponent<ParachuteDescentController>() ?? root.AddComponent<ParachuteDescentController>())
-                .Configure(parachuteRenderer);
-            (root.GetComponent<MinerOutfitVisual>() ?? root.AddComponent<MinerOutfitVisual>())
-                .Configure(directionSource, miner.GetComponent<SpriteRenderer>(), null, minerOutfit);
+            ParachuteDescentController flight = root.GetComponent<ParachuteDescentController>() ??
+                                                 root.AddComponent<ParachuteDescentController>();
+            flight.Configure(parachuteRenderer);
+            MinerOutfitVisual outfitVisual = root.GetComponent<MinerOutfitVisual>() ??
+                                             root.AddComponent<MinerOutfitVisual>();
+            outfitVisual.Configure(directionSource, miner.GetComponent<SpriteRenderer>(), null, minerOutfit);
+            HangGliderVisualController gliderVisual = root.GetComponent<HangGliderVisualController>() ??
+                                                      root.AddComponent<HangGliderVisualController>();
+            gliderVisual.Configure(flight,root.GetComponent<HeroMovement>(),outfitVisual,
+                parachuteRenderer,parachuteSprite,gliderFloatRight,gliderDiveRight,gliderBankRight);
             PrefabUtility.SaveAsPrefabAsset(root, HeroPrefabPath);
         }
         finally { PrefabUtility.UnloadPrefabContents(root); }
@@ -370,6 +482,49 @@ public static class MineLevelBuilder
         EditorSceneManager.SaveScene(scene,level.Path);
     }
 
+    private static void BuildLevel3(LevelSpec level, GameObject prefab, ArtSet art)
+    {
+        Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        Transform root = new GameObject("Level 3 - Parachute Chasm Drop").transform;
+        CreateGlobalMineLight(root);
+
+        Vector2 entry = new(0f, 25f);
+        Transform route = new GameObject("Parachute Descent Route").transform;
+        route.SetParent(root);
+        Vector2 heroPosition = entry + new Vector2(-3.5f, 1.5f);
+        GameObject hero = SpawnHero(prefab, scene, heroPosition);
+        CreateEntranceDoor(root, art, hero, heroPosition);
+
+        int waypointOrder = 0;
+        var routePoints = new List<Vector2> { entry };
+        Vector2 bottom = BuildLevel12Descent(route, root, art, entry, ref waypointOrder,
+            routePoints, 0, "Entrance Door Foundation (Required)", out _);
+
+        Vector2 firstExitStep = bottom + new Vector2(7f, .5f);
+        Vector2 secondExitStep = bottom + new Vector2(13f, 1.2f);
+        CreatePlatform(route, art.Platform, "Parachute Landing Exit Step 01", firstExitStep, 5.5f, 0f);
+        CreateWaypoint(route, firstExitStep + Vector2.up * 1.45f, ++waypointOrder);
+        CreatePlatform(route, art.Platform, "Parachute Landing Exit Step 02", secondExitStep, 5.5f, 0f);
+        CreateWaypoint(route, secondExitStep + Vector2.up * 1.45f, ++waypointOrder);
+
+        CreateBronzeChallenge(root, art, level.Number,
+            firstExitStep + new Vector2(0f, 3.8f), secondExitStep + new Vector2(0f, 4f));
+        CreateDoor(root, art, level.Number, bottom + new Vector2(19f, 3.75f));
+        CreateTiledBackdrop(root, art.MixedDescentBackdrop, "Level 3 Parachute Chasm Backdrop",
+            new Vector3(5f, (entry.y + bottom.y) * .5f, 5f), new Vector2(52f, 58f), -120,
+            new Color32(72, 88, 112, 255));
+
+        Camera camera = CreateCameraBase(new Vector3(heroPosition.x, heroPosition.y, -10f));
+        camera.orthographicSize = 6.4f;
+        camera.gameObject.AddComponent<BoundedCameraFollow>().Configure(hero.transform,
+            new Vector2(-3.5f, bottom.y), new Vector2(17f, heroPosition.y), new Vector2(1.2f, 0f));
+        CreateFatalZone(root, "Level 3 Chasm Abyss", bottom + new Vector2(6f, -10f),
+            new Vector2(42f, 10f));
+
+        CreateHud(hero, level, "DESCEND THROUGH THE GEM SHAFT     REACH THE EXIT TUNNEL");
+        EditorSceneManager.SaveScene(scene, level.Path);
+    }
+
     private static void BuildLevel12(LevelSpec level, GameObject prefab, ArtSet art)
     {
         Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -417,7 +572,7 @@ public static class MineLevelBuilder
                     break;
                 case MineRouteSectionType.VerticalDown:
                     cursor = BuildLevel12Descent(section, root, art, cursor, ref waypointOrder,
-                        routePoints, index, out pathLength);
+                        routePoints, index, $"Parachute Launch Shelf {index + 1:00}", out pathLength);
                     break;
                 default:
                     throw new System.ArgumentOutOfRangeException();
@@ -456,7 +611,7 @@ public static class MineLevelBuilder
             new Vector2(maxX - minX + 32f, 12f));
 
         CreateHud(hero, level,
-            "MIXED DEEPWORKS GAUNTLET     PRESS UP / W OR INTERACT TO TOGGLE PARACHUTE     JUMP ALWAYS REMAINS AVAILABLE");
+            "MIXED DEEPWORKS GAUNTLET     FOLLOW THE GEM TRAIL THROUGH THE DESCENTS");
         EditorSceneManager.SaveScene(scene, level.Path);
     }
 
@@ -586,8 +741,7 @@ public static class MineLevelBuilder
         GameObject previousPlatform = existingEntrance != null
             ? existingEntrance.gameObject
             : CreatePlatform(section, art.Platform,
-                $"Mixed Horizontal Hub {sectionIndex + 1:00}", entry,
-                followsVerticalClimb ? 8f : 6.5f, 0f);
+                $"Mixed Horizontal Hub {sectionIndex + 1:00}", entry, 6.5f, 0f);
         pathLength = 0f;
         for (int step = 0; step < 7; step++)
         {
@@ -609,8 +763,8 @@ public static class MineLevelBuilder
             // The first gap after a vertical climb begins at the same ledge the
             // player has just fought upward to reach. A shallow instant-death
             // strip there punished an otherwise valid takeoff before the miner
-            // could clear the platform edge. The wider transition hub still
-            // requires a deliberate jump, while a missed jump falls naturally
+            // could clear the platform edge. Preserve a full body-width opening
+            // so the miner can rise past the next ledge, while a missed jump falls naturally
             // to the global off-route abyss instead of dying at ankle height.
             bool safeVerticalTransition = followsVerticalClimb && step == 0;
             if ((!leadsIntoDescent || step < 6) && !safeVerticalTransition)
@@ -641,12 +795,12 @@ public static class MineLevelBuilder
 
     private static Vector2 BuildLevel12Descent(Transform section, Transform levelRoot, ArtSet art,
         Vector2 entry, ref int waypointOrder, ICollection<Vector2> routePoints, int sectionIndex,
-        out float pathLength)
+        string launchShelfName, out float pathLength)
     {
         const float depth = 30f;
         // Anchor the launch shelf against the left shaft wall. The open right edge
         // creates one unambiguous, nonlethal way to begin the parachute descent.
-        CreatePlatform(section, art.Platform, $"Parachute Launch Shelf {sectionIndex + 1:00}",
+        CreatePlatform(section, art.Platform, launchShelfName,
             entry + Vector2.left * 3.5f, 11f, 0f);
 
         GameObject launchArea = new($"Parachute Launch Area {sectionIndex + 1:00}");
@@ -655,16 +809,7 @@ public static class MineLevelBuilder
         BoxCollider2D launchTrigger = launchArea.AddComponent<BoxCollider2D>();
         launchTrigger.isTrigger = true;
         launchTrigger.size = new Vector2(13f, 5f);
-        GameObject signObject = new($"Parachute Right-Edge Sign {sectionIndex + 1:00}");
-        signObject.transform.SetParent(launchArea.transform, false);
-        signObject.transform.localPosition = new Vector3(3.8f, 1.45f, 0f);
-        TextMeshPro sign = signObject.AddComponent<TextMeshPro>();
-        sign.text = "PARACHUTE DROP\nRIGHT EDGE";
-        sign.fontSize = 2.4f;
-        sign.alignment = TextAlignmentOptions.Center;
-        sign.color = new Color32(255, 211, 108, 255);
-        sign.sortingOrder = 12;
-        launchArea.AddComponent<ParachuteLaunchZone>().Configure(sign);
+        launchArea.AddComponent<ParachuteLaunchZone>().Configure(null);
 
         GameObject zone = new($"Parachute Descent Zone {sectionIndex + 1:00}");
         zone.transform.SetParent(section);
@@ -708,6 +853,7 @@ public static class MineLevelBuilder
                 left ? -90f : 90f);
             Vector2 safePass = entry + new Vector2(left ? 3.8f : -3.8f, -hazardDepths[hazardIndex] - .4f);
             CreateWaypoint(section, safePass, ++waypointOrder, AutomatedWaypointMode.AirbornePass, 1.5f, true);
+            CreateGem(section, art.GreenGem, safePass + Vector2.up * .75f, 1);
             routePoints.Add(safePass);
         }
 
@@ -871,7 +1017,7 @@ public static class MineLevelBuilder
             "Entrance Door Foundation (Required)",lastPosition,7.2f,0);
         for(int i=0;i<level.Segments;i++)
         {
-            float y=i%3==0?-1f:i%3==1?.85f:-.15f;
+            float y=i%3==0 ? -1f : i%3==1 ? .85f : -.15f;
             Vector2 position=new(-1.3f+i*6.8f,y);
             float width=Mathf.Max(3.5f,4.8f-level.Number*.08f);
             GameObject platform=CreatePlatform(route,art.Platform,$"Pit Ledge {i+1:00}",position,width,0);
@@ -925,7 +1071,8 @@ public static class MineLevelBuilder
 
     private static void CreateGlobalMineLight(Transform parent)
     {
-        GameObject lightGo=new("Global Bronze Mine Light"); lightGo.transform.SetParent(parent); Light2D light=lightGo.AddComponent<Light2D>(); light.lightType=Light2D.LightType.Global; light.color=new Color32(190,202,225,255); light.intensity=.82f;
+        DungeonVisualTheme theme=CurrentTheme;
+        GameObject lightGo=new(theme==null?"Global Mine Light":$"Global {theme.DisplayName} Light"); lightGo.transform.SetParent(parent); Light2D light=lightGo.AddComponent<Light2D>(); light.lightType=Light2D.LightType.Global; light.color=theme==null?new Color32(190,202,225,255):theme.AmbientLight; light.intensity=.82f;
     }
 
     private static Camera CreateCameraBase(Vector3 position)
@@ -938,14 +1085,88 @@ public static class MineLevelBuilder
 
     private static GameObject CreatePlatform(Transform parent,Sprite sprite,string name,Vector2 position,float width,float angle)
     {
-        GameObject go=new(name); go.transform.SetParent(parent); go.transform.position=position; go.transform.rotation=Quaternion.Euler(0,0,angle); go.transform.localScale=new Vector3(width/6f,.58f,1); go.layer=LayerMask.NameToLayer("Ground"); go.tag="Ground";
-        SpriteRenderer renderer=go.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=2; BoxCollider2D collider=go.AddComponent<BoxCollider2D>(); collider.size=new Vector2(5.85f,.82f); return go;
+        GameObject go=new(name); go.transform.SetParent(parent); go.transform.position=position;
+        go.transform.rotation=Quaternion.Euler(0,0,angle); go.layer=LayerMask.NameToLayer("Ground"); go.tag="Ground";
+        BoxCollider2D collider=go.AddComponent<BoxCollider2D>();
+        collider.size=new Vector2(Mathf.Max(.5f,width-.12f),.5f); collider.offset=new Vector2(0f,-.05f);
+
+        GameObject fill=new("Rock Interior Fill"); fill.transform.SetParent(go.transform,false);
+        fill.transform.localPosition=new Vector3(0f,-.28f,0f);
+        SpriteRenderer renderer=fill.AddComponent<SpriteRenderer>(); renderer.sprite=sprite;
+        renderer.drawMode=SpriteDrawMode.Tiled; renderer.size=new Vector2(width,1.2f);
+        renderer.sortingOrder=1; renderer.color=RockSurfaceTint();
+        DungeonVisualTheme theme=CurrentTheme;
+        if(theme!=null) fill.AddComponent<ThemedMetalFlakes>().Configure(theme,renderer,.78f);
+
+        CreateRockEdgeBand(go.transform,"Whole-Rock Top Edge",new Vector3(0f,.28f,-.01f),
+            width,0f,3,.62f);
+        CreateRockEdgeBand(go.transform,"Whole-Rock Bottom Edge",new Vector3(0f,-.86f,-.01f),
+            width,180f,3,.5f);
+        CreateRockEdgeBand(go.transform,"Whole-Rock Left Edge",
+            new Vector3(-width*.5f+.06f,-.29f,-.01f),1.15f,90f,3,.5f);
+        CreateRockEdgeBand(go.transform,"Whole-Rock Right Edge",
+            new Vector3(width*.5f-.06f,-.29f,-.01f),1.15f,-90f,3,.5f);
+
+        CreateRockCornerTile(go.transform,"Top Left Whole-Rock Corner",
+            new Vector3(-width*.5f+.62f,.18f,-.02f),0f,false,4,.58f);
+        CreateRockCornerTile(go.transform,"Top Right Whole-Rock Corner",
+            new Vector3(width*.5f-.62f,.18f,-.02f),0f,true,4,.58f);
+        CreateRockCornerTile(go.transform,"Bottom Left Whole-Rock Corner",
+            new Vector3(-width*.5f+.62f,-.76f,-.02f),180f,true,4,.46f);
+        CreateRockCornerTile(go.transform,"Bottom Right Whole-Rock Corner",
+            new Vector3(width*.5f-.62f,-.76f,-.02f),180f,false,4,.46f);
+        return go;
+    }
+
+    private static SpriteRenderer CreateRockEdgeBand(Transform parent,string name,Vector3 localPosition,
+        float length,float angle,int sortingOrder,float flakeDensityScale)
+    {
+        if(rockEdgeSprite==null) return null;
+        GameObject edge=new(name); edge.transform.SetParent(parent,false);
+        edge.transform.localPosition=localPosition;
+        edge.transform.localRotation=Quaternion.Euler(0f,0f,angle);
+        SpriteRenderer renderer=edge.AddComponent<SpriteRenderer>(); renderer.sprite=rockEdgeSprite;
+        renderer.drawMode=SpriteDrawMode.Tiled;
+        renderer.size=new Vector2(Mathf.Max(.3f,length),1.15f);
+        renderer.sortingOrder=sortingOrder; renderer.color=RockSurfaceTint();
+        DungeonVisualTheme theme=CurrentTheme;
+        if(theme!=null)
+            edge.AddComponent<ThemedMetalFlakes>().Configure(theme,renderer,flakeDensityScale,
+                Mathf.RoundToInt(localPosition.x*79f+localPosition.y*131f+angle));
+        return renderer;
+    }
+
+    private static SpriteRenderer CreateRockCornerTile(Transform parent,string name,
+        Vector3 localPosition,float angle,bool flipX,int sortingOrder,float flakeDensityScale)
+    {
+        if(rockCornerSprite==null) return null;
+        GameObject corner=new(name); corner.transform.SetParent(parent,false);
+        corner.transform.localPosition=localPosition;
+        corner.transform.localRotation=Quaternion.Euler(0f,0f,angle);
+        corner.transform.localScale=Vector3.one*.72f;
+        SpriteRenderer renderer=corner.AddComponent<SpriteRenderer>(); renderer.sprite=rockCornerSprite;
+        renderer.flipX=flipX; renderer.sortingOrder=sortingOrder; renderer.color=RockSurfaceTint();
+        DungeonVisualTheme theme=CurrentTheme;
+        if(theme!=null)
+            corner.AddComponent<ThemedMetalFlakes>().Configure(theme,renderer,flakeDensityScale,
+                Mathf.RoundToInt(localPosition.x*97f+localPosition.y*149f+angle));
+        return renderer;
+    }
+
+    private static Color RockSurfaceTint()
+    {
+        DungeonVisualTheme theme=CurrentTheme;
+        return theme==null?Color.white:Color.Lerp(Color.white,theme.RockTint,.22f);
     }
 
     private static void CreateDoor(Transform parent,ArtSet art,int levelNumber,Vector2 position)
     {
         CreatePlatform(parent,art.Platform,"Exit Door Foundation (Required)",position+Vector2.down*2.05f,6.5f,0);
-        GameObject door=new("Mine Exit Door"); door.transform.SetParent(parent); door.transform.position=position; door.transform.localScale=Vector3.one*.9f; SpriteRenderer renderer=door.AddComponent<SpriteRenderer>(); renderer.sprite=art.Door; renderer.sortingOrder=5; BoxCollider2D trigger=door.AddComponent<BoxCollider2D>(); trigger.isTrigger=true; trigger.size=new Vector2(2.2f,3.4f); trigger.offset=new Vector2(0,-.1f); door.AddComponent<LevelExitDoor>().Configure("DungeonOverview",levelNumber);
+        GameObject door=new("Mine Exit Door"); door.transform.SetParent(parent); door.transform.position=position; door.transform.localScale=Vector3.one*.9f;
+        BoxCollider2D trigger=door.AddComponent<BoxCollider2D>(); trigger.isTrigger=true;
+        trigger.size=new Vector2(3f,5f); trigger.offset=new Vector2(0f,.3f);
+        ConfigureAnimatedDoor(door,art.Door,true);
+        door.AddComponent<LevelExitDoor>().Configure("DungeonOverview",levelNumber);
         GameObject glow=new("Exit Lamp Glow"); glow.transform.SetParent(door.transform,false); glow.transform.localPosition=new Vector3(0,1.7f,0); Light2D light=glow.AddComponent<Light2D>(); light.lightType=Light2D.LightType.Point; light.color=Amber; light.intensity=1.2f; light.pointLightOuterRadius=4;
     }
 
@@ -957,10 +1178,7 @@ public static class MineLevelBuilder
         door.transform.SetParent(parent);
         door.transform.position = doorPosition;
         door.transform.localScale = Vector3.one * .9f;
-        SpriteRenderer renderer = door.AddComponent<SpriteRenderer>();
-        renderer.sprite = art.Door;
-        // The miner fades in and walks toward the camera in front of the doorway.
-        renderer.sortingOrder = 5;
+        ConfigureAnimatedDoor(door, art.Door);
         door.AddComponent<LevelEntranceDoor>().Configure(
             hero.GetComponent<HeroMovement>(), gameplayPosition);
 
@@ -974,15 +1192,55 @@ public static class MineLevelBuilder
         light.pointLightOuterRadius = 3.5f;
     }
 
+    private static MineDoorAnimator ConfigureAnimatedDoor(GameObject door,Sprite fallbackClosed,
+        bool blockPassageWhileClosed=false)
+    {
+        DungeonVisualTheme theme=CurrentTheme;
+        Sprite closedSprite=theme!=null&&theme.DoorClosedSprite!=null
+            ?theme.DoorClosedSprite:fallbackClosed;
+        Sprite openSprite=theme==null?null:theme.DoorOpenSprite;
+        GameObject closed=new("Closed Door Art"); closed.transform.SetParent(door.transform,false);
+        SpriteRenderer closedRenderer=closed.AddComponent<SpriteRenderer>();
+        closedRenderer.sprite=closedSprite; closedRenderer.sortingOrder=5;
+        GameObject open=new("Open Door Art"); open.transform.SetParent(door.transform,false);
+        SpriteRenderer openRenderer=open.AddComponent<SpriteRenderer>();
+        openRenderer.sprite=openSprite; openRenderer.sortingOrder=5; openRenderer.enabled=false;
+        if(closedSprite!=null&&openSprite!=null)
+        {
+            Vector2 closedSize=closedSprite.bounds.size;
+            Vector2 openSize=openSprite.bounds.size;
+            open.transform.localScale=new Vector3(
+                closedSize.x/Mathf.Max(.001f,openSize.x),
+                closedSize.y/Mathf.Max(.001f,openSize.y),1f);
+        }
+        Collider2D blocker=null;
+        if(blockPassageWhileClosed)
+        {
+            GameObject blockerObject=new("Closed Door Passage Blocker");
+            blockerObject.transform.SetParent(door.transform,false);
+            blockerObject.transform.localPosition=new Vector3(0f,-.15f,0f);
+            BoxCollider2D box=blockerObject.AddComponent<BoxCollider2D>();
+            box.size=new Vector2(1.6f,3.15f);
+            blocker=box;
+        }
+        MineDoorAnimator animator=door.AddComponent<MineDoorAnimator>();
+        animator.Configure(closedRenderer,openRenderer,.38f,.3f,blocker);
+        return animator;
+    }
+
     private static void CreateSpike(Transform parent,Sprite sprite,Vector2 position,float angle)
     {
-        GameObject go=new("Bronze Spike - 1 Heart"); go.transform.SetParent(parent); go.transform.position=position; go.transform.rotation=Quaternion.Euler(0,0,angle); SpriteRenderer renderer=go.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=5; SpikeHitboxGeometry.AddCollider(go); go.AddComponent<DamageZone>().Configure(1);
+        GameObject go=new("Polished Bronze Spike - 1 Heart"); go.transform.SetParent(parent); go.transform.position=position; go.transform.rotation=Quaternion.Euler(0,0,angle); go.transform.localScale=Vector3.one*.5f;
+        SpriteRenderer renderer=go.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=5;
+        ConfigureShine(go,renderer,2.15f,position.x*.071f);
+        SpikeHitboxGeometry.AddCollider(go); go.AddComponent<DamageZone>().Configure(1);
     }
 
     private static void CreateHiddenDescentSpike(Transform parent,Sprite sprite,string name,Vector2 position,float angle)
     {
-        GameObject go=new(name); go.transform.SetParent(parent); go.transform.position=position; go.transform.rotation=Quaternion.Euler(0,0,angle); go.transform.localScale=new Vector3(1.5f,1.25f,1f);
+        GameObject go=new(name); go.transform.SetParent(parent); go.transform.position=position; go.transform.rotation=Quaternion.Euler(0,0,angle); go.transform.localScale=new Vector3(.75f,.625f,1f);
         SpriteRenderer renderer=go.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=6;
+        ConfigureShine(go,renderer,2.3f,position.y*.047f);
         SpikeHitboxGeometry.AddCollider(go);
         go.AddComponent<DamageZone>().Configure(1);
         go.AddComponent<ProximityHiddenHazard>().Configure(10f,.6f);
@@ -990,8 +1248,9 @@ public static class MineLevelBuilder
 
     private static void CreateOscillatingDescentHazard(Transform parent,Sprite sprite,string name,Vector2 position,float travelDistance,float phase)
     {
-        GameObject go=new(name); go.transform.SetParent(parent); go.transform.position=position; go.transform.localScale=new Vector3(2.3f,1.15f,1f);
+        GameObject go=new(name); go.transform.SetParent(parent); go.transform.position=position; go.transform.localScale=new Vector3(1.15f,.575f,1f);
         SpriteRenderer renderer=go.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=6;
+        ConfigureShine(go,renderer,2.05f,phase);
         SpikeHitboxGeometry.AddCollider(go);
         go.AddComponent<DamageZone>().Configure(1);
         Rigidbody2D body=go.AddComponent<Rigidbody2D>(); body.bodyType=RigidbodyType2D.Kinematic; body.gravityScale=0f;
@@ -1000,16 +1259,35 @@ public static class MineLevelBuilder
 
     private static void CreateGem(Transform parent,Sprite sprite,Vector2 position,int value)
     {
-        GameObject go=new(value==1?"Green Gem (1)":value==5?"Blue Gem (5)":"Purple Gem (20)"); go.transform.SetParent(parent); go.transform.position=position; SpriteRenderer renderer=go.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=6; CircleCollider2D trigger=go.AddComponent<CircleCollider2D>(); trigger.isTrigger=true; trigger.radius=.55f; go.AddComponent<GreenCrystalCollectible>().Configure(value);
+        GameObject go=new(value==1?"Cut Green Gem (1)":value==5?"Cut Blue Gem (5)":"Cut Purple Gem (20)"); go.transform.SetParent(parent); go.transform.position=position; go.transform.localScale=Vector3.one*.6f;
+        SpriteRenderer renderer=go.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=6;
+        renderer.color=value==1?new Color32(101,255,173,255):value==5?new Color32(108,190,255,255):new Color32(218,124,255,255);
+        ConfigureShine(go,renderer,1.8f,position.x*.091f+position.y*.037f);
+        CircleCollider2D trigger=go.AddComponent<CircleCollider2D>(); trigger.isTrigger=true; trigger.radius=.5f; go.AddComponent<GreenCrystalCollectible>().Configure(value);
+    }
+
+    private static void ConfigureShine(GameObject target,SpriteRenderer renderer,float seconds,float phase)
+    {
+        SpriteShineAnimator shine=target.AddComponent<SpriteShineAnimator>();
+        shine.Configure(CurrentTheme,renderer,seconds,Mathf.Repeat(phase,1f));
     }
 
     private static void CreateBronzeChallenge(Transform parent,ArtSet art,int levelNumber,Vector2 keyPosition,Vector2 chestPosition)
     {
         Transform challenge=new GameObject("Optional Bronze Key Chest Challenge").transform; challenge.SetParent(parent);
         CreatePlatform(challenge,art.Platform,"Bronze Key Perch",keyPosition+Vector2.down*1.25f,3.2f,0);
-        GameObject key=new("Hidden Bronze Key"); key.transform.SetParent(challenge); key.transform.position=keyPosition; SpriteRenderer keyRenderer=key.AddComponent<SpriteRenderer>(); keyRenderer.sprite=art.BronzeKey; keyRenderer.sortingOrder=8; key.AddComponent<CircleCollider2D>().isTrigger=true; key.AddComponent<BronzeKeyCollectible>().Configure(levelNumber);
+        GameObject key=new("Hidden Polished Bronze Key"); key.transform.SetParent(challenge); key.transform.position=keyPosition; key.transform.localScale=Vector3.one*.72f;
+        SpriteRenderer keyRenderer=key.AddComponent<SpriteRenderer>(); keyRenderer.sprite=art.BronzeKey; keyRenderer.sortingOrder=8;
+        DungeonVisualTheme theme=CurrentTheme;
+        keyRenderer.color=theme==null?Color.white:theme.MetalHighlight;
+        ConfigureShine(key,keyRenderer,1.9f,keyPosition.y*.071f);
+        key.AddComponent<CircleCollider2D>().isTrigger=true; key.AddComponent<BronzeKeyCollectible>().Configure(levelNumber);
         CreatePlatform(challenge,art.Platform,"Reward Chest Perch",chestPosition+Vector2.down*1.25f,4.2f,0);
-        GameObject chest=new("Bronze Key Reward Chest"); chest.transform.SetParent(challenge); chest.transform.position=chestPosition; SpriteRenderer chestRenderer=chest.AddComponent<SpriteRenderer>(); chestRenderer.sprite=art.Chest; chestRenderer.sortingOrder=8; BoxCollider2D chestTrigger=chest.AddComponent<BoxCollider2D>(); chestTrigger.isTrigger=true; chestTrigger.size=new Vector2(2.2f,1.8f); chest.AddComponent<RewardChest>().Configure(levelNumber,art.OpenChest);
+        GameObject chest=new("Metal-Bound Bronze Key Reward Chest"); chest.transform.SetParent(challenge); chest.transform.position=chestPosition;
+        SpriteRenderer chestRenderer=chest.AddComponent<SpriteRenderer>(); chestRenderer.sprite=art.Chest; chestRenderer.sortingOrder=8;
+        ConfigureShine(chest,chestRenderer,2.65f,chestPosition.x*.053f);
+        BoxCollider2D chestTrigger=chest.AddComponent<BoxCollider2D>(); chestTrigger.isTrigger=true; chestTrigger.size=new Vector2(2.2f,1.5f);
+        chest.AddComponent<RewardChest>().Configure(levelNumber,art.OpenChest);
     }
 
     private static void CreateSilverKeyChallenge(Transform parent,ArtSet art,Vector2 position)
@@ -1104,27 +1382,38 @@ public static class MineLevelBuilder
     private static void CreateVisibleShaftWall(Transform parent, Sprite rockSprite, string name,
         Vector2 position, float height)
     {
-        GameObject wall = new(name);
-        wall.transform.SetParent(parent);
-        wall.transform.position = position;
-        wall.layer = LayerMask.NameToLayer("Ground");
-        wall.AddComponent<BoxCollider2D>().size = new Vector2(1f, height);
-
-        GameObject face = new(name + " Bronze Vein Face");
-        face.transform.SetParent(wall.transform, false);
-        face.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
-        // MineRockBronzePlatform is 6x2 world units at import size. Rotating and
-        // scaling it this way makes a one-unit-wide illustrated wall that matches
-        // the physical collider and the established bronze-veined rock style.
-        face.transform.localScale = new Vector3(height / 6f, .5f, 1f);
-        SpriteRenderer renderer = face.AddComponent<SpriteRenderer>();
-        renderer.sprite = rockSprite;
-        renderer.sortingOrder = 1;
+        CreateBoundary(parent,name,position,new Vector2(1f,height));
     }
 
-    private static void CreateBoundary(Transform parent,string name,Vector2 position,Vector2 size) { GameObject go=new(name); go.transform.SetParent(parent); go.transform.position=position; go.layer=LayerMask.NameToLayer("Ground"); go.AddComponent<BoxCollider2D>().size=size; }
+    private static void CreateBoundary(Transform parent,string name,Vector2 position,Vector2 size)
+    {
+        GameObject go=new(name); go.transform.SetParent(parent); go.transform.position=position;
+        go.layer=LayerMask.NameToLayer("Ground"); go.tag="Ground";
+        go.AddComponent<BoxCollider2D>().size=size;
+        DungeonVisualTheme theme=CurrentTheme;
+        if(theme==null||theme.RockFillSprite==null) return;
 
-    private static void CreateHud(GameObject hero,LevelSpec level,string instruction)
+        GameObject fill=new("Rock Wall Interior Fill"); fill.transform.SetParent(go.transform,false);
+        SpriteRenderer fillRenderer=fill.AddComponent<SpriteRenderer>();
+        fillRenderer.sprite=theme.RockFillSprite; fillRenderer.drawMode=SpriteDrawMode.Tiled;
+        fillRenderer.size=new Vector2(Mathf.Max(2.4f,size.x+1.5f),size.y+.3f);
+        fillRenderer.sortingOrder=1; fillRenderer.color=RockSurfaceTint();
+        fill.AddComponent<ThemedMetalFlakes>().Configure(theme,fillRenderer,.92f);
+
+        if(rockEdgeSprite==null) return;
+        bool leftWall=name.IndexOf("Left",System.StringComparison.OrdinalIgnoreCase)>=0;
+        float edgeX=leftWall ? .58f : -.58f;
+        CreateRockEdgeBand(go.transform,"Whole-Rock Exposed Wall Edge",
+            new Vector3(edgeX,0f,-.01f),size.y,leftWall ? -90f : 90f,3,.72f);
+        CreateRockCornerTile(go.transform,"Whole-Rock Wall Top Cap",
+            new Vector3(edgeX,leftWall ? size.y*.5f-.62f : size.y*.5f-.62f,-.02f),
+            leftWall ? -90f : 90f,!leftWall,4,.55f);
+        CreateRockCornerTile(go.transform,"Whole-Rock Wall Bottom Cap",
+            new Vector3(edgeX,-size.y*.5f+.62f,-.02f),leftWall ? 90f : -90f,leftWall,4,.55f);
+    }
+
+    private static void CreateHud(GameObject hero,LevelSpec level,string instruction,
+        string dungeonId=GameProgress.BronzeDungeonId,string homeScene=MineLevelMenuController.DefaultHomeScene)
     {
         Canvas canvas=CreateCanvas("Level HUD");
         TextMeshProUGUI title=Text(canvas.transform,"Level Title",$"LEVEL {level.Number}  |  {level.DisplayName}",27,TextAlignmentOptions.Center,Amber);
@@ -1135,45 +1424,26 @@ public static class MineLevelBuilder
         Rect(lives.rectTransform,new(1,1),new(1,1),new(-22,-22),new(250,42));
         hero.GetComponent<PlayerHealth>().ConfigureDisplays(hearts,lives);
 
-        TextMeshProUGUI status=Text(canvas.transform,"Run Status","FIND THE HIDDEN BRONZE KEY",18,
+        TextMeshProUGUI status=Text(canvas.transform,"Run Status",$"FIND A HIDDEN {dungeonId.ToUpperInvariant()} KEY",18,
             TextAlignmentOptions.Left,new Color32(255,208,112,255));
         Rect(status.rectTransform,new(0,1),new(0,1),new(22,-66),new(760,38));
-        hero.GetComponent<MineRunInventory>().Configure(level.Number,status);
+        hero.GetComponent<MineRunInventory>().Configure(dungeonId,level.Number,status);
 
         string controls=$"{instruction}\n"+
             "CONTROLLER BUTTONS LOAD AT RUNTIME  |  REMAP: OVERVIEW > CONTROLS\n"+
-            "KEYBOARD: ARROWS / A-D MOVE  |  SHIFT RUN + SPACE JUMP  |  UP / W INTERACT  |  H POTION  |  ESC PAUSE  |  BACKSPACE SHOP";
+            "KEYBOARD: ARROWS / A-D MOVE  |  SHIFT RUN + SPACE JUMP  |  X GLIDER  |  UP HOVER / DOWN DESCEND  |  H POTION  |  ESC PAUSE  |  BACKSPACE SHOP";
         TextMeshProUGUI instructions=Text(canvas.transform,"Instructions",controls,15,TextAlignmentOptions.Center,Color.white);
         instructions.textWrappingMode=TextWrappingModes.NoWrap;
         instructions.outlineWidth=.18f;
         instructions.outlineColor=Color.black;
         Rect(instructions.rectTransform,new(.5f,0),new(.5f,0),new(0,48),new(1880,86));
 
-        if (level.Number == 12)
-        {
-            GameObject chutePrompt = Panel(canvas.transform, "Parachute Shaft Prompt",
-                new Color(.025f, .04f, .075f, .94f));
-            Rect((RectTransform)chutePrompt.transform, new(.5f,.72f), new(.5f,.72f),
-                Vector2.zero, new(1120,150));
-            Image promptImage = chutePrompt.GetComponent<Image>();
-            if (promptImage != null) promptImage.raycastTarget = false;
-            TextMeshProUGUI chuteText = Text(chutePrompt.transform, "Parachute Instructions", string.Empty,
-                23, TextAlignmentOptions.Center, new Color32(242, 221, 154, 255));
-            chuteText.textWrappingMode = TextWrappingModes.Normal;
-            chuteText.outlineWidth = .2f;
-            chuteText.outlineColor = Color.black;
-            chuteText.raycastTarget = false;
-            Rect(chuteText.rectTransform, new(.5f,.5f), new(.5f,.5f), Vector2.zero, new(1060,130));
-            canvas.gameObject.AddComponent<ParachuteInstructionDisplay>().Configure(
-                hero.GetComponent<ParachuteDescentController>(), chutePrompt, chuteText);
-        }
-
         GameObject pause=Panel(canvas.transform,"Pause Menu",new Color(.025f,.035f,.06f,.97f));
         Rect((RectTransform)pause.transform,new(.5f,.5f),new(.5f,.5f),Vector2.zero,new(780,520));
         TextMeshProUGUI pauseTitle=Text(pause.transform,"Pause Heading","PAUSED",52,TextAlignmentOptions.Center,Amber);
         Rect(pauseTitle.rectTransform,new(.5f,1),new(.5f,1),new(0,-52),new(650,75));
         TextMeshProUGUI pauseHelp=Text(pause.transform,"Pause Controls",
-            "START / ESC: RESUME     |     BACK / BACKSPACE: RETURN TO OVERVIEW SHOP",18,
+            "START / ESC: RESUME     |     BACK / BACKSPACE: OPEN IN-LEVEL SHOP",18,
             TextAlignmentOptions.Center,Color.white);
         Rect(pauseHelp.rectTransform,new(.5f,.5f),new(.5f,.5f),new(0,65),new(720,55));
         TextMeshProUGUI retreatWarning=Text(pause.transform,"Retreat Warning",
@@ -1185,9 +1455,354 @@ public static class MineLevelBuilder
         Button resume=CreateActionButton(pause.transform,"Resume Button","RESUME",new Vector2(0,-75),menu.ResumeGame);
         CreateActionButton(pause.transform,"Return To Shop Button","RETURN TO OVERVIEW / SHOP",
             new Vector2(0,-165),menu.ReturnToOverview);
-        menu.Configure(pause,resume.gameObject);
+        menu.Configure(pause,resume.gameObject,homeScene);
+
+        GameObject shopPanel=Panel(canvas.transform,"Mid-Level Shop",new Color(.025f,.035f,.06f,.985f));
+        Rect((RectTransform)shopPanel.transform,new(.5f,.5f),new(.5f,.5f),Vector2.zero,new(960,850));
+        TextMeshProUGUI shopTitle=Text(shopPanel.transform,"Shop Heading","MINER'S SUPPLY CART",46,
+            TextAlignmentOptions.Center,Amber);
+        Rect(shopTitle.rectTransform,new(.5f,1),new(.5f,1),new(0,-42),new(820,70));
+        TextMeshProUGUI shopBalance=Text(shopPanel.transform,"Shop Balance","GREEN CRYSTALS",19,
+            TextAlignmentOptions.Center,Color.white);
+        Rect(shopBalance.rectTransform,new(.5f,1),new(.5f,1),new(0,-112),new(880,44));
+        TextMeshProUGUI shopStatus=Text(shopPanel.transform,"Shop Status","Shop without leaving this level.",18,
+            TextAlignmentOptions.Center,new Color32(205,222,242,255));
+        Rect(shopStatus.rectTransform,new(.5f,1),new(.5f,1),new(0,-158),new(850,48));
+
+        MidLevelShopController shop=canvas.gameObject.AddComponent<MidLevelShopController>();
+        Button lifeButton=CreateActionButton(shopPanel.transform,"Buy Life Button",
+            $"EXTRA LIFE   -   {GameProgress.ExtraLifePrice} GEMS",new Vector2(0,132),shop.BuyExtraLife);
+        CreateActionButton(shopPanel.transform,"Buy Potion Button",
+            $"HEALTH POTION   -   {GameProgress.HealthPotionPrice} GEMS",new Vector2(0,42),shop.BuyHealthPotion);
+        CreateActionButton(shopPanel.transform,"Buy Heart Button",
+            $"PERMANENT HEART   -   {GameProgress.HeartUpgradePrice} GEMS",new Vector2(0,-48),shop.BuyHeartUpgrade);
+        CreateActionButton(shopPanel.transform,"Close Shop Button","CLOSE AND CONTINUE",
+            new Vector2(0,-172),shop.HideShop);
+        CreateActionButton(shopPanel.transform,"Shop Return To Overview Button","RETURN TO DUNGEON MAP",
+            new Vector2(0,-266),shop.ReturnToOverview);
+        shop.Configure(shopPanel,shopBalance,shopStatus,menu,hero.GetComponent<PlayerHealth>(),lifeButton.gameObject);
         canvas.gameObject.AddComponent<MineControlHintDisplay>().Configure(instructions,pauseHelp,instruction);
         CreateEventSystem(null);
+    }
+
+    private static void BuildSilverLevel1(GameObject prefab,ArtSet art)
+    {
+        Scene scene=EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);
+        Transform root=new GameObject("Silver Dungeon Level 1 - Silver Lode").transform;
+        CreateGlobalMineLight(root);
+
+        SpriteRenderer rockBackdrop=CreateTiledBackdrop(root,art.Platform,"Silver-Flecked Rock Mass",
+            new Vector3(0f,0f,5f),new Vector2(116f,78f),-130,RockSurfaceTint());
+        rockBackdrop.gameObject.AddComponent<ThemedMetalFlakes>().Configure(CurrentTheme,rockBackdrop,1.18f,701);
+        CreateSilverVoidLayout(root,art.Platform);
+
+        Vector2 heroPosition=new(-48f,-29.55f);
+        GameObject hero=SpawnHero(prefab,scene,heroPosition);
+        Camera camera=CreateCameraBase(new Vector3(-46f,-27f,-10f));
+        camera.orthographicSize=6.4f;
+        camera.gameObject.AddComponent<MixedRouteCameraFollow>().Configure(hero.transform,
+            new Vector2(-46f,-27f),new Vector2(46f,27f));
+
+        Transform route=new GameObject("Hand-Drawn Main Route").transform; route.SetParent(root);
+        int waypointOrder=0;
+        CreatePlatform(route,art.Platform,"Silver Entrance Foundation (Required)",new Vector2(-48f,-31f),8f,0f);
+        CreateEntranceDoor(root,art,hero,heroPosition);
+        CreateWaypoint(root,heroPosition,waypointOrder++);
+
+        Vector2[] leftClimb=
+        {
+            new(-40f,-28f),new(-47.5f,-24.9f),new(-40f,-21.8f),new(-47.5f,-18.7f),
+            new(-40f,-15.6f),new(-47.5f,-12.5f),new(-40f,-9.4f),new(-47.5f,-6.3f),
+            new(-40f,-3.2f),new(-47.5f,-.1f),new(-40f,3f),new(-47.5f,6.1f),
+            new(-40f,9.2f),new(-47.5f,12.3f),new(-40f,15.4f),new(-47.5f,18.5f),
+            new(-40f,21.6f),new(-47.5f,24.7f)
+        };
+        for(int i=0;i<leftClimb.Length;i++)
+        {
+            Vector2 ledge=leftClimb[i];
+            const float ledgeWidth=4.6f;
+            CreatePlatform(route,art.Platform,$"Silver Left Climb Ledge {i+1:00}",ledge,ledgeWidth,0f);
+            CreateWaypoint(root,ledge+Vector2.up*1.35f,waypointOrder++);
+            if(i%2==1) CreateGem(root,art.GreenGem,ledge+Vector2.up*1.75f,1);
+            if(i==12) CreateSpike(root,art.Spike,ledge+new Vector2(1.55f,.55f),0f);
+        }
+
+        Vector2 firstLaunch=new(-39f,27.8f);
+        CreatePlatform(route,art.Platform,"First Major Glider Launch Shelf",firstLaunch,7f,0f);
+        CreateWaypoint(root,firstLaunch+Vector2.up*1.35f,waypointOrder++);
+        CreateDescentZone(root,"First Major Glider Camera Zone",new Vector2(-28f,18.5f),
+            new Vector2(38f,23f),23f);
+
+        Vector2[] firstGlide=
+        {
+            new(-34f,24f),new(-29f,20f),new(-23f,16f),new(-18f,12.5f)
+        };
+        for(int i=0;i<firstGlide.Length;i++)
+        {
+            CreateWaypoint(root,firstGlide[i],waypointOrder++,AutomatedWaypointMode.AirbornePass,
+                1.6f,true);
+            CreateGem(root,art.GreenGem,firstGlide[i]+Vector2.up*.65f,1);
+        }
+        CreateMovingSpike(root,art.Spike,"Moving Bronze Spike - First Glide Horizontal",
+            new Vector2(-32f,21.5f),Vector2.right,3.8f,.08f);
+        CreateMovingSpike(root,art.Spike,"Moving Bronze Spike - First Glide Vertical",
+            new Vector2(-25f,17f),Vector2.up,2.8f,.37f);
+        CreateMovingSpike(root,art.Spike,"Moving Bronze Spike - First Glide Exit",
+            new Vector2(-18f,11f),Vector2.right,2.5f,.62f);
+
+        Vector2 firstLanding=new(-13f,8.5f);
+        CreatePlatform(route,art.Platform,"First Glider Landing",firstLanding,8f,0f);
+        CreateWaypoint(root,firstLanding+Vector2.up*1.35f,waypointOrder++);
+
+        Vector2[] middleRoute=
+        {
+            new(-7f,7f),new(-1f,5f),new(5f,2.8f),new(11f,.5f),new(17f,-2f),new(23f,-4.5f)
+        };
+        for(int i=0;i<middleRoute.Length;i++)
+        {
+            Vector2 ledge=middleRoute[i];
+            GameObject platform=i==1
+                ?CreateMovingPlatform(route,art.Platform,"Horizontal Moving Silver Platform",ledge,6.8f,new Vector2(3.4f,0f))
+                :i==3
+                    ?CreateMovingPlatform(route,art.Platform,"Vertical Moving Silver Platform",ledge,6.2f,new Vector2(0f,3f))
+                    :CreatePlatform(route,art.Platform,$"Central Silver Route Ledge {i+1:00}",ledge,4.8f,0f);
+            CreateWaypoint(platform.transform,ledge+Vector2.up*1.4f,waypointOrder++);
+            if(i!=1&&i!=3) CreateGem(root,art.GreenGem,ledge+Vector2.up*1.8f,1);
+            if(i==2||i==4) CreateSpike(root,art.Spike,
+                ledge+new Vector2(i==2 ? -1.4f : 1.4f,.55f),0f);
+        }
+
+        Vector2[] finalClimb=
+        {
+            new(31.5f,-1f),new(38f,2.5f),new(44.5f,6f),new(50f,9.5f),new(44f,13f),
+            new(51.5f,16.5f),new(44f,20f),new(51.5f,23.5f),new(44f,27f)
+        };
+        for(int i=0;i<finalClimb.Length;i++)
+        {
+            Vector2 ledge=finalClimb[i];
+            CreatePlatform(route,art.Platform,$"Final Chute Approach Ledge {i+1:00}",ledge,4.2f,0f);
+            CreateWaypoint(root,ledge+Vector2.up*1.35f,waypointOrder++,
+                requirePowerJump:true);
+            if(i%2==0) CreateGem(root,art.GreenGem,ledge+Vector2.up*1.75f,1);
+        }
+
+        CreateDescentZone(root,"Final Major Glider Camera Zone",new Vector2(44f,0f),
+            new Vector2(18f,58f),58f);
+        Vector2[] finalGlide=
+        {
+            new(40f,22f),new(48f,15f),new(40f,8f),new(48f,1f),
+            new(40f,-6f),new(48f,-13f),new(40f,-20f),new(45f,-27f)
+        };
+        for(int i=0;i<finalGlide.Length;i++)
+        {
+            CreateWaypoint(root,finalGlide[i],waypointOrder++,AutomatedWaypointMode.AirbornePass,
+                1.55f,true);
+            CreateGem(root,art.GreenGem,
+                finalGlide[i]+new Vector2(i%2==0 ? .8f : -.8f,.55f),1);
+        }
+        CreateMovingSpike(root,art.Spike,"Final Chute Moving Spike Horizontal A",
+            new Vector2(41.5f,18f),Vector2.right,3.5f,.12f);
+        CreateMovingSpike(root,art.Spike,"Final Chute Moving Spike Vertical",
+            new Vector2(50f,5f),Vector2.up,3.4f,.43f);
+        CreateMovingSpike(root,art.Spike,"Final Chute Moving Spike Horizontal B",
+            new Vector2(44f,-10f),Vector2.right,4.1f,.71f);
+        CreateMovingSpike(root,art.Spike,"Final Chute Moving Spike Horizontal C",
+            new Vector2(44f,-22f),Vector2.right,3.7f,.91f);
+
+        CreatePlatform(route,art.Platform,"Final Chute Landing",new Vector2(44f,-31f),13f,0f);
+        CreateWaypoint(root,new Vector2(44f,-29.55f),waypointOrder++);
+        CreatePlatform(route,art.Platform,"Hidden Gem Room Floor",new Vector2(28f,-31f),12f,0f);
+        CreatePlatform(route,art.Platform,"Walk-Through Hidden Room Floor Bridge",
+            new Vector2(35.7f,-31f),5.2f,0f);
+        CreateFakeSilverWall(root,art.Platform,hero.transform,new Vector2(34.5f,-26.5f),new Vector2(4.2f,10f));
+
+        Vector2[] blueGems={new(25f,-28.8f),new(27f,-27f),new(29f,-28.8f),new(31f,-27f)};
+        foreach(Vector2 gem in blueGems) CreateGem(root,art.BlueGem,gem,5);
+        CreateGem(root,art.PurpleGem,new Vector2(28f,-24.6f),20);
+
+        CreateSilverKeysAndChests(root,art);
+        CreateSilverExitDoor(root,art,new Vector2(49f,-28.2f));
+        CreateBoundary(root,"Silver Lode Left Rock Wall",new Vector2(-55f,0f),new Vector2(1f,76f));
+        CreateBoundary(root,"Silver Lode Right Rock Wall",new Vector2(55f,0f),new Vector2(1f,76f));
+        CreateFatalZone(root,"Silver Lode Deep Rock Abyss",new Vector2(0f,-39f),new Vector2(116f,8f));
+
+        LevelSpec silverLevel=new(1,"SilverLevel1_SilverLode","SILVER LODE",ShaftDirection.Mixed,52);
+        CreateHud(hero,silverLevel,
+            "MULTIPLE KEYS CAN BE CARRIED  |  EACH CHEST USES ONE  |  FIND THE WALK-THROUGH ROCK WALL",
+            GameProgress.SilverDungeonId,"SilverDungeonOverview");
+        EditorSceneManager.SaveScene(scene,SilverLevel1Path);
+    }
+
+    private static void CreateSilverVoidLayout(Transform parent,Sprite rockSprite)
+    {
+        CreateVoidMask(parent,rockSprite,"Lower-Left Start Chamber",new Vector2(-47f,-25f),new Vector2(15f,20f));
+        CreateVoidMask(parent,rockSprite,"Left Vertical Passage",new Vector2(-46f,4f),new Vector2(15f,59f));
+        CreateVoidMask(parent,rockSprite,"Upper Glide Chamber",new Vector2(-28f,19f),new Vector2(36f,24f));
+        CreateVoidMask(parent,rockSprite,"Central Silver Chamber",new Vector2(2f,4f),new Vector2(35f,22f));
+        CreateVoidMask(parent,rockSprite,"Final Chute Approach",new Vector2(31f,10f),new Vector2(29f,39f));
+        CreateVoidMask(parent,rockSprite,"Final Major Chute",new Vector2(45f,0f),new Vector2(18f,66f));
+        CreateVoidMask(parent,rockSprite,"Lower-Right Exit Chamber",new Vector2(42f,-29f),new Vector2(31f,12f));
+        CreateVoidMask(parent,rockSprite,"Hidden Blue Purple Gem Pocket",new Vector2(27.5f,-27f),new Vector2(16f,13f));
+    }
+
+    private static void CreateVoidMask(Transform parent,Sprite sprite,string name,Vector2 position,Vector2 size)
+    {
+        CreateTiledBackdrop(parent,sprite,name,new Vector3(position.x,position.y,4f),size,-100,
+            new Color(.055f,.07f,.095f,1f));
+        Transform frame=new GameObject($"{name} - Edge-Aware Whole-Rock Frame").transform;
+        frame.SetParent(parent); frame.position=new Vector3(position.x,position.y,4f);
+        float halfWidth=size.x*.5f;
+        float halfHeight=size.y*.5f;
+        CreateRockEdgeBand(frame,"Top Whole-Rock Wall Edge",new Vector3(0f,halfHeight,-.01f),
+            size.x,0f,-98,.7f);
+        CreateRockEdgeBand(frame,"Bottom Whole-Rock Wall Edge",new Vector3(0f,-halfHeight,-.01f),
+            size.x,180f,-98,.7f);
+        CreateRockEdgeBand(frame,"Left Whole-Rock Wall Edge",new Vector3(-halfWidth,0f,-.01f),
+            size.y,90f,-98,.7f);
+        CreateRockEdgeBand(frame,"Right Whole-Rock Wall Edge",new Vector3(halfWidth,0f,-.01f),
+            size.y,-90f,-98,.7f);
+        CreateRockCornerTile(frame,"Top Left Rock Corner",new Vector3(-halfWidth,halfHeight,-.02f),
+            0f,false,-97,.55f);
+        CreateRockCornerTile(frame,"Top Right Rock Corner",new Vector3(halfWidth,halfHeight,-.02f),
+            0f,true,-97,.55f);
+        CreateRockCornerTile(frame,"Bottom Left Rock Corner",new Vector3(-halfWidth,-halfHeight,-.02f),
+            180f,true,-97,.55f);
+        CreateRockCornerTile(frame,"Bottom Right Rock Corner",new Vector3(halfWidth,-halfHeight,-.02f),
+            180f,false,-97,.55f);
+    }
+
+    private static GameObject CreateMovingPlatform(Transform parent,Sprite sprite,string name,
+        Vector2 position,float width,Vector2 offset)
+    {
+        GameObject platform=CreatePlatform(parent,sprite,name,position,width,0f);
+        Rigidbody2D body=platform.AddComponent<Rigidbody2D>(); body.bodyType=RigidbodyType2D.Kinematic;
+        body.gravityScale=0f; body.interpolation=RigidbodyInterpolation2D.Interpolate;
+        platform.AddComponent<MovingPlatform>().Configure(offset,1.2f,.9f);
+        return platform;
+    }
+
+    private static void CreateMovingSpike(Transform parent,Sprite sprite,string name,Vector2 position,
+        Vector2 axis,float distance,float phase)
+    {
+        GameObject spike=new(name); spike.transform.SetParent(parent); spike.transform.position=position;
+        spike.transform.localScale=Vector3.one*.5f;
+        SpriteRenderer renderer=spike.AddComponent<SpriteRenderer>(); renderer.sprite=sprite; renderer.sortingOrder=7;
+        ConfigureShine(spike,renderer,2.1f,phase);
+        SpikeHitboxGeometry.AddCollider(spike); spike.AddComponent<DamageZone>().Configure(1);
+        Rigidbody2D body=spike.AddComponent<Rigidbody2D>(); body.bodyType=RigidbodyType2D.Kinematic; body.gravityScale=0f;
+        spike.AddComponent<OscillatingHazard>().Configure(axis,distance,.22f,phase);
+    }
+
+    private static void CreateDescentZone(Transform parent,string name,Vector2 position,
+        Vector2 size,float depth)
+    {
+        GameObject zone=new(name); zone.transform.SetParent(parent); zone.transform.position=position;
+        BoxCollider2D trigger=zone.AddComponent<BoxCollider2D>(); trigger.isTrigger=true; trigger.size=size;
+        zone.AddComponent<ParachuteDescentZone>().Configure(depth);
+    }
+
+    private static void CreateSilverKeysAndChests(Transform parent,ArtSet art)
+    {
+        Vector2[] keyPositions=
+        {
+            new(-47.5f,-11.1f),new(-34f,26f),new(-8f,9.4f),
+            new(16f,.2f),new(42f,20.5f),new(41f,-16f)
+        };
+        Vector2[] chestPositions=
+        {
+            new(-51f,9.2f),new(-20f,19f),new(-7f,8.2f),
+            new(23f,-3.3f),new(50f,10.7f),new(28f,-29.4f)
+        };
+
+        CreatePlatform(parent,art.Platform,"Chest Branch Perch 01",new Vector2(-51f,7.7f),4.5f,0f);
+        CreatePlatform(parent,art.Platform,"Chest Branch Perch 02",new Vector2(-20f,17.5f),4.5f,0f);
+        for(int i=0;i<keyPositions.Length;i++)
+        {
+            CreateSilverDungeonKey(parent,art,keyPositions[i],$"silver-l1-key-{i+1:00}");
+            CreateSilverDungeonChest(parent,art,chestPositions[i],$"silver-l1-chest-{i+1:00}");
+        }
+    }
+
+    private static void CreateSilverDungeonKey(Transform parent,ArtSet art,Vector2 position,string pickupId)
+    {
+        GameObject key=new($"Silver Chest Key {pickupId}"); key.transform.SetParent(parent);
+        key.transform.position=position; key.transform.localScale=Vector3.one*.72f;
+        SpriteRenderer renderer=key.AddComponent<SpriteRenderer>(); renderer.sprite=art.SilverKey;
+        renderer.sortingOrder=9; ConfigureShine(key,renderer,1.7f,position.x*.047f);
+        CircleCollider2D trigger=key.AddComponent<CircleCollider2D>(); trigger.isTrigger=true; trigger.radius=.62f;
+        key.AddComponent<BronzeKeyCollectible>().Configure(GameProgress.SilverDungeonId,1,pickupId);
+    }
+
+    private static void CreateSilverDungeonChest(Transform parent,ArtSet art,Vector2 position,string chestId)
+    {
+        GameObject chest=new($"Silver Metal-Bound Chest {chestId}"); chest.transform.SetParent(parent);
+        chest.transform.position=position;
+        SpriteRenderer renderer=chest.AddComponent<SpriteRenderer>(); renderer.sprite=art.Chest; renderer.sortingOrder=9;
+        ConfigureShine(chest,renderer,2.55f,position.y*.039f);
+        BoxCollider2D trigger=chest.AddComponent<BoxCollider2D>(); trigger.isTrigger=true;
+        trigger.size=new Vector2(2.25f,1.45f);
+        chest.AddComponent<RewardChest>().Configure(GameProgress.SilverDungeonId,1,chestId,
+            art.Chest,art.OpenChest,art.OpenChest,.18f,.38f);
+    }
+
+    private static void CreateFakeSilverWall(Transform parent,Sprite rockSprite,Transform hero,
+        Vector2 position,Vector2 size)
+    {
+        GameObject wall=new("Fake Rock Wall - Walk Through To Hidden Gem Room");
+        wall.transform.SetParent(parent); wall.transform.position=position;
+        SpriteRenderer renderer=wall.AddComponent<SpriteRenderer>(); renderer.sprite=rockSprite;
+        renderer.drawMode=SpriteDrawMode.Tiled; renderer.size=size; renderer.sortingOrder=12;
+        renderer.color=RockSurfaceTint();
+        wall.AddComponent<ThemedMetalFlakes>().Configure(CurrentTheme,renderer,1f,919);
+        BoxCollider2D trigger=wall.AddComponent<BoxCollider2D>(); trigger.isTrigger=true; trigger.size=size;
+        FakeWallReveal reveal=wall.AddComponent<FakeWallReveal>(); reveal.Configure(renderer,true,.64f,.14f,.28f);
+        reveal.SetTrackedPlayer(hero);
+    }
+
+    private static void CreateSilverExitDoor(Transform parent,ArtSet art,Vector2 position)
+    {
+        CreatePlatform(parent,art.Platform,"Silver Exit Door Foundation (Required)",
+            position+Vector2.down*2.05f,7f,0f);
+        GameObject door=new("Silver Mine Exit Door"); door.transform.SetParent(parent);
+        door.transform.position=position; door.transform.localScale=Vector3.one*.9f;
+        BoxCollider2D trigger=door.AddComponent<BoxCollider2D>(); trigger.isTrigger=true;
+        trigger.size=new Vector2(3f,5f); trigger.offset=new Vector2(0f,.3f);
+        ConfigureAnimatedDoor(door,art.Door,true);
+        door.AddComponent<LevelExitDoor>().Configure("SilverDungeonOverview",0);
+        GameObject glow=new("Silver Exit Lamp Glow"); glow.transform.SetParent(door.transform,false);
+        glow.transform.localPosition=new Vector3(0f,1.7f,0f);
+        Light2D light=glow.AddComponent<Light2D>(); light.lightType=Light2D.LightType.Point;
+        DungeonVisualTheme theme=CurrentTheme;
+        light.color=theme==null?Color.white:theme.AccentLight; light.intensity=1.25f; light.pointLightOuterRadius=4f;
+    }
+
+    private static void BuildSilverOverview(Sprite background)
+    {
+        Scene scene=EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);
+        Camera camera=CreateCameraBase(new Vector3(0f,0f,-10f)); camera.orthographicSize=5f;
+        Canvas canvas=CreateCanvas("Silver Dungeon Overview Canvas");
+        canvas.gameObject.AddComponent<DungeonOverviewBoundary>();
+        FullImage(canvas.transform,"Silver Rock Background",background,new Color32(155,166,181,255));
+        FullImage(canvas.transform,"Silver Overview Shadow",null,new Color(.018f,.028f,.045f,.72f));
+        GameObject panel=Panel(canvas.transform,"Silver Lode Test Panel",new Color(.025f,.04f,.065f,.94f));
+        Rect((RectTransform)panel.transform,new(.5f,.5f),new(.5f,.5f),Vector2.zero,new Vector2(1050,700));
+        TextMeshProUGUI title=Text(panel.transform,"Silver Dungeon Heading","DUNGEON 2  -  SILVER LODE",48,
+            TextAlignmentOptions.Center,new Color32(231,242,255,255));
+        Rect(title.rectTransform,new(.5f,1),new(.5f,1),new(0,-52),new(940,80));
+        TextMeshProUGUI description=Text(panel.transform,"Silver Test Description",
+            "LEVEL 1 TEST BUILD\nMULTIPLE KEYS + METAL-BOUND CHESTS\nTWO HANG-GLIDER SECTIONS + HIDDEN GEM ROOM",
+            23,TextAlignmentOptions.Center,new Color32(192,214,240,255));
+        Rect(description.rectTransform,new(.5f,.5f),new(.5f,.5f),new(0,95),new(900,150));
+        Button play=CreateSceneButton(panel.transform,"Play Silver Level 1","PLAY LEVEL 1: SILVER LODE",
+            new Vector2(0,-75),new Vector2(620,82),"SilverLevel1_SilverLode",true);
+        CreateSceneButton(panel.transform,"Return To Bronze Dungeon","BACK TO BRONZE DUNGEON",
+            new Vector2(0,-190),new Vector2(620,72),"DungeonOverview");
+        TextMeshProUGUI controls=Text(panel.transform,"Silver Controls",
+            "X: TOGGLE HANG GLIDER   |   UP: HOLD ALTITUDE   |   DOWN: DESCEND FASTER   |   BACK: SHOP",
+            17,TextAlignmentOptions.Center,Color.white);
+        Rect(controls.rectTransform,new(.5f,0),new(.5f,0),new(0,34),new(940,46));
+        CreateEventSystem(play.gameObject);
+        EditorSceneManager.SaveScene(scene,SilverOverviewPath);
     }
 
     private static void BuildOverview(Sprite background)
@@ -1254,6 +1869,8 @@ public static class MineLevelBuilder
         CreateActionButton(canvas.transform,"Levels Tab","LEVELS",new Vector2(-300,-495),controller.ShowLevels);
         CreateActionButton(canvas.transform,"Shop Tab","SHOP",new Vector2(0,-495),controller.ShowShop);
         CreateActionButton(canvas.transform,"Controls Tab","CONTROLS",new Vector2(300,-495),controller.ShowControls);
+        CreateSceneButton(canvas.transform,"Silver Dungeon Test Button","DUNGEON 2: SILVER TEST",
+            new Vector2(755,-495),new Vector2(370,72),SilverOverviewPath);
         controller.Configure(levels,shop,controls,balance,status,firstLevelSelection,buyLife.gameObject,run.gameObject);
         controller.ShowLevels();
         CreateEventSystem(firstLevelSelection);
@@ -1292,7 +1909,20 @@ public static class MineLevelBuilder
 
     private static Button CreateActionButton(Transform parent,string name,string label,Vector2 position,UnityEngine.Events.UnityAction action)
     {
-        GameObject go=new(name,typeof(RectTransform),typeof(CanvasRenderer),typeof(Image),typeof(Button)); go.transform.SetParent(parent,false); go.GetComponent<Image>().color=Bronze; UnityEventTools.AddPersistentListener(go.GetComponent<Button>().onClick,action); Rect((RectTransform)go.transform,new(.5f,.5f),new(.5f,.5f),position,new(500,72)); TextMeshProUGUI text=Text(go.transform,"Label",label,20,TextAlignmentOptions.Center,Color.white); Stretch(text.rectTransform);
+        DungeonVisualTheme theme=CurrentTheme;
+        GameObject go=new(name,typeof(RectTransform),typeof(CanvasRenderer),typeof(Image),typeof(Button)); go.transform.SetParent(parent,false); go.GetComponent<Image>().color=theme==null?Bronze:theme.MetalBase; UnityEventTools.AddPersistentListener(go.GetComponent<Button>().onClick,action); Rect((RectTransform)go.transform,new(.5f,.5f),new(.5f,.5f),position,new(500,72)); TextMeshProUGUI text=Text(go.transform,"Label",label,20,TextAlignmentOptions.Center,Color.white); Stretch(text.rectTransform);
+        return go.GetComponent<Button>();
+    }
+
+    private static Button CreateSceneButton(Transform parent,string name,string label,
+        Vector2 position,Vector2 size,string targetScene,bool beginPlaytestRun=false)
+    {
+        GameObject go=new(name,typeof(RectTransform),typeof(CanvasRenderer),typeof(Image),typeof(Button));
+        DungeonVisualTheme theme=CurrentTheme;
+        go.transform.SetParent(parent,false); go.GetComponent<Image>().color=theme==null?Bronze:theme.MetalBase;
+        Rect((RectTransform)go.transform,new(.5f,.5f),new(.5f,.5f),position,size);
+        TextMeshProUGUI text=Text(go.transform,"Label",label,19,TextAlignmentOptions.Center,Color.white);
+        Stretch(text.rectTransform); go.AddComponent<SceneLoadButton>().Configure(targetScene,beginPlaytestRun);
         return go.GetComponent<Button>();
     }
 
@@ -1308,14 +1938,15 @@ public static class MineLevelBuilder
 
     private static Canvas CreateCanvas(string name) { GameObject go=new(name,typeof(RectTransform),typeof(Canvas),typeof(CanvasScaler),typeof(GraphicRaycaster)); Canvas canvas=go.GetComponent<Canvas>(); canvas.renderMode=RenderMode.ScreenSpaceOverlay; CanvasScaler scaler=go.GetComponent<CanvasScaler>(); scaler.uiScaleMode=CanvasScaler.ScaleMode.ScaleWithScreenSize; scaler.referenceResolution=new Vector2(1920,1080); scaler.matchWidthOrHeight=.5f; return canvas; }
     private static void FullImage(Transform parent,string name,Sprite sprite,Color color) { GameObject go=new(name,typeof(RectTransform),typeof(CanvasRenderer),typeof(Image)); go.transform.SetParent(parent,false); Image image=go.GetComponent<Image>(); image.sprite=sprite; image.color=color; image.raycastTarget=false; Stretch((RectTransform)go.transform); }
-    private static GameObject Panel(Transform parent,string name,Color color) { GameObject go=new(name,typeof(RectTransform),typeof(CanvasRenderer),typeof(Image),typeof(Outline)); go.transform.SetParent(parent,false); go.GetComponent<Image>().color=color; Outline outline=go.GetComponent<Outline>(); outline.effectColor=new Color32(174,108,54,210); outline.effectDistance=new Vector2(2,-2); return go; }
+    private static GameObject Panel(Transform parent,string name,Color color) { DungeonVisualTheme theme=CurrentTheme; GameObject go=new(name,typeof(RectTransform),typeof(CanvasRenderer),typeof(Image),typeof(Outline)); go.transform.SetParent(parent,false); go.GetComponent<Image>().color=color; Outline outline=go.GetComponent<Outline>(); Color edge=theme==null?new Color32(174,108,54,210):theme.MetalHighlight; edge.a=.82f; outline.effectColor=edge; outline.effectDistance=new Vector2(2,-2); return go; }
     private static TextMeshProUGUI Text(Transform parent,string name,string value,float size,TextAlignmentOptions alignment,Color color) { GameObject go=new(name,typeof(RectTransform),typeof(CanvasRenderer),typeof(TextMeshProUGUI)); go.transform.SetParent(parent,false); TextMeshProUGUI text=go.GetComponent<TextMeshProUGUI>(); text.text=value; text.fontSize=size; text.fontStyle=FontStyles.Bold; text.alignment=alignment; text.color=color; text.raycastTarget=false; return text; }
     private static void Rect(RectTransform rect,Vector2 min,Vector2 max,Vector2 position,Vector2 size) { rect.anchorMin=min; rect.anchorMax=max; rect.pivot=(min+max)*.5f; rect.anchoredPosition=position; rect.sizeDelta=size; }
     private static void Stretch(RectTransform rect) { rect.anchorMin=Vector2.zero; rect.anchorMax=Vector2.one; rect.offsetMin=Vector2.zero; rect.offsetMax=Vector2.zero; }
 
-    private static Sprite ImportSprite(string path,float ppu,bool readable=false,bool repeat=false)
+    private static Sprite ImportSprite(string path,float ppu,bool readable=false,bool repeat=false,
+        bool smooth=false)
     {
-        AssetDatabase.ImportAsset(path,ImportAssetOptions.ForceSynchronousImport); TextureImporter importer=AssetImporter.GetAtPath(path) as TextureImporter; if(importer==null) throw new InvalidDataException(path); importer.textureType=TextureImporterType.Sprite; importer.spriteImportMode=SpriteImportMode.Single; importer.spritePixelsPerUnit=ppu; importer.filterMode=FilterMode.Point; importer.wrapMode=repeat?TextureWrapMode.Repeat:TextureWrapMode.Clamp; importer.mipmapEnabled=false; importer.textureCompression=TextureImporterCompression.Uncompressed; importer.alphaIsTransparency=true; importer.isReadable=readable; importer.maxTextureSize=2048; TextureImporterSettings settings=new(); importer.ReadTextureSettings(settings); settings.spriteMeshType=SpriteMeshType.FullRect; importer.SetTextureSettings(settings); importer.SaveAndReimport(); return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+        AssetDatabase.ImportAsset(path,ImportAssetOptions.ForceSynchronousImport); TextureImporter importer=AssetImporter.GetAtPath(path) as TextureImporter; if(importer==null) throw new InvalidDataException(path); importer.textureType=TextureImporterType.Sprite; importer.spriteImportMode=SpriteImportMode.Single; importer.spritePixelsPerUnit=ppu; importer.filterMode=smooth?FilterMode.Bilinear:FilterMode.Point; importer.wrapMode=repeat?TextureWrapMode.Repeat:TextureWrapMode.Clamp; importer.mipmapEnabled=false; importer.textureCompression=TextureImporterCompression.Uncompressed; importer.alphaIsTransparency=true; importer.isReadable=readable; importer.maxTextureSize=2048; TextureImporterSettings settings=new(); importer.ReadTextureSettings(settings); settings.spriteMeshType=SpriteMeshType.FullRect; importer.SetTextureSettings(settings); importer.SaveAndReimport(); return AssetDatabase.LoadAssetAtPath<Sprite>(path);
     }
 
     private static void CreatePixelAssets() { WritePlatform(); WriteMineBackgroundTiles(); WriteGem(GreenGemPath,new Color32(11,91,56,255),new Color32(32,210,106,255),new Color32(145,255,184,255)); WriteGem(BlueGemPath,new Color32(18,63,139,255),new Color32(46,148,255,255),new Color32(176,230,255,255)); WriteGem(PurpleGemPath,new Color32(74,27,112,255),new Color32(177,72,234,255),new Color32(245,184,255,255)); WriteSpike(); WriteParachute(); WriteKey(BronzeKeyPath,new Color32(106,58,24,255),new Color32(213,126,54,255),new Color32(255,193,94,255)); WriteKey(SilverKeyPath,new Color32(72,83,101,255),new Color32(172,190,211,255),new Color32(242,250,255,255)); WriteChest(); WriteOpenChest(); }

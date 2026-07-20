@@ -37,6 +37,7 @@ public class HeroMovement : MonoBehaviour
     private bool automatedJumpHeld;
     private bool automatedRunHeld;
     private bool automatedParachuteHeld;
+    private float automatedGliderVerticalInput;
     private bool previousAutomatedJumpHeld;
     private int blueCrystalCount;
     private int blackBigCrystalCount;
@@ -57,6 +58,11 @@ public class HeroMovement : MonoBehaviour
     public float PowerJumpHoldSeconds => powerJumpTime;
     public bool JumpInputHeld { get; private set; }
     public bool ParachuteInputHeld { get; private set; }
+    public float HorizontalInput => horizontalInput;
+    public bool IsFacingLeft => spriteRenderer != null && spriteRenderer.flipX;
+    public float GliderVerticalInput => automatedControlEnabled
+        ? automatedGliderVerticalInput
+        : MineInput.GliderVertical;
     public int BlueCrystalCount => blueCrystalCount;
     public int BlackBigCrystalCount => blackBigCrystalCount;
 
@@ -214,6 +220,7 @@ public class HeroMovement : MonoBehaviour
         automatedJumpHeld = false;
         automatedRunHeld = false;
         automatedParachuteHeld = false;
+        automatedGliderVerticalInput = 0f;
         previousAutomatedJumpHeld = false;
         JumpInputHeld = false;
         ParachuteInputHeld = false;
@@ -221,12 +228,13 @@ public class HeroMovement : MonoBehaviour
     }
 
     public void SetAutomatedInput(float horizontal, bool jumpHeld, bool runHeld = false,
-        bool parachuteHeld = false)
+        bool parachuteHeld = false, float gliderVertical = 0f)
     {
         automatedHorizontalInput = Mathf.Clamp(horizontal, -1f, 1f);
         automatedJumpHeld = jumpHeld;
         automatedRunHeld = runHeld;
         automatedParachuteHeld = parachuteHeld;
+        automatedGliderVerticalInput = Mathf.Clamp(gliderVertical, -1f, 1f);
     }
 
     private void ReadInput(out bool jumpPressed, out bool jumpHeld, out bool jumpReleased,

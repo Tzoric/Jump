@@ -26,6 +26,10 @@ public sealed class MinerOutfitVisual : MonoBehaviour
     private bool perspectiveOverride;
     private Perspective forcedPerspective;
     private bool forcedWalking;
+    private bool flightPoseOverride;
+    private Perspective flightPerspective = Perspective.Side;
+    private int flightFrame = 3;
+    private bool flightFacingLeft;
     private float animationClock;
     private float landingUntil;
     private bool wasAirborne;
@@ -34,7 +38,10 @@ public sealed class MinerOutfitVisual : MonoBehaviour
     public SpriteRenderer VisualRenderer => minerBody;
     public Transform HandPickaxe => handPickaxe;
     public CharacterOutfitDefinition Outfit => outfit;
-    public Perspective CurrentPerspective => perspectiveOverride ? forcedPerspective : Perspective.Side;
+    public Perspective CurrentPerspective => perspectiveOverride
+        ? forcedPerspective
+        : flightPoseOverride ? flightPerspective : Perspective.Side;
+    public bool IsFlightPoseActive => flightPoseOverride;
     public int CurrentAnimationRow { get; private set; } = -1;
     public int CurrentAnimationFrame { get; private set; } = -1;
 
@@ -80,6 +87,22 @@ public sealed class MinerOutfitVisual : MonoBehaviour
         animationClock = 0f;
     }
 
+    public void SetFlightPose(Perspective perspective, int frame, bool faceLeft)
+    {
+        flightPoseOverride = true;
+        flightPerspective = perspective;
+        flightFrame = Mathf.Clamp(frame, 0, 5);
+        flightFacingLeft = faceLeft;
+    }
+
+    public void ClearFlightPose()
+    {
+        flightPoseOverride = false;
+        flightPerspective = Perspective.Side;
+        flightFrame = 3;
+        flightFacingLeft = false;
+    }
+
     private void Awake()
     {
         physicsBody = GetComponent<Rigidbody2D>();
@@ -105,12 +128,17 @@ public sealed class MinerOutfitVisual : MonoBehaviour
         if (directionSource == null || minerBody == null) return;
 
         if (!framesBuilt) BuildFrames();
-        float direction = directionSource.flipX ? -1f : 1f;
+        bool useFlightPose = flightPoseOverride && !perspectiveOverride;
+        float direction = useFlightPose
+            ? (flightFacingLeft ? -1f : 1f)
+            : directionSource.flipX ? -1f : 1f;
         float horizontalSpeed = physicsBody == null ? 0f : Mathf.Abs(physicsBody.linearVelocityX);
         float walkCycle = Time.time * Mathf.Lerp(4f, 10f, Mathf.InverseLerp(0f, 7.5f, horizontalSpeed));
         float bob = !framesBuilt && horizontalSpeed > .15f ? Mathf.Abs(Mathf.Sin(walkCycle)) * .025f : 0f;
 
-        Perspective perspective = perspectiveOverride ? forcedPerspective : Perspective.Side;
+        Perspective perspective = perspectiveOverride
+            ? forcedPerspective
+            : flightPoseOverride ? flightPerspective : Perspective.Side;
         minerBody.flipX = perspective == Perspective.Side && direction < 0f;
         minerBody.transform.localPosition = bodyRestPosition + Vector3.up * bob;
 
@@ -144,7 +172,16 @@ public sealed class MinerOutfitVisual : MonoBehaviour
         float fps;
         int state;
 
-        if (perspective == Perspective.TowardCamera || perspective == Perspective.AwayFromCamera)
+        bool useFlightPose = flightPoseOverride && !perspectiveOverride;
+        if (useFlightPose)
+        {
+            row = perspective == Perspective.TowardCamera ? 3 :
+                perspective == Perspective.AwayFromCamera ? 4 : 2;
+            frame = flightFrame;
+            fps = walkFramesPerSecond;
+            state = 300 + row * 10 + frame;
+        }
+        else if (perspective == Perspective.TowardCamera || perspective == Perspective.AwayFromCamera)
         {
             row = perspective == Perspective.TowardCamera ? 3 : 4;
             fps = walkFramesPerSecond;

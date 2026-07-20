@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -10,6 +11,10 @@ public sealed class AutomatedPlaytester : MonoBehaviour
 {
     private const float DefaultTimeoutSeconds = 120f;
     private const float FailureHeight = -30f;
+    private const float GliderInputSettleSeconds = .12f;
+    private const float GliderHoverPulseSeconds = .14f;
+    private const float GliderNeutralGapSeconds = .06f;
+    private const float GliderDivePulseSeconds = .12f;
 
     private readonly List<AutomatedPlaytestWaypoint> waypoints = new();
 
@@ -41,6 +46,8 @@ public sealed class AutomatedPlaytester : MonoBehaviour
     private bool powerRunEnabled;
     private bool returnHomeMode;
     private bool traceFirstJump;
+    private bool midLevelShopMode;
+    private bool exerciseGlobalGlider;
     private bool returnHomeRequested;
     private bool airborneSinceLastWaypoint;
     private bool startSettled;
@@ -54,6 +61,16 @@ public sealed class AutomatedPlaytester : MonoBehaviour
     private int startingPotions;
     private float traceFirstJumpUntil;
     private float nextJumpTraceAt;
+    private int midLevelShopExerciseState;
+    private Component midLevelShopController;
+    private MethodInfo midLevelShopToggle;
+    private bool globalGliderObserved;
+    private int globalGliderExerciseState;
+    private bool routeGliderWaypointEncountered;
+    private bool routeGliderHoverExercised;
+    private bool routeGliderDiveExercised;
+    private int routeGliderInputExerciseState;
+    private float routeGliderInputExerciseStartedAt;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void StartWhenRequested()
@@ -87,6 +104,8 @@ public sealed class AutomatedPlaytester : MonoBehaviour
         powerRunEnabled = Array.IndexOf(Environment.GetCommandLineArgs(), "-playtestPowerRun") >= 0;
         returnHomeMode = Array.IndexOf(Environment.GetCommandLineArgs(), "-playtestReturnHome") >= 0;
         traceFirstJump = Array.IndexOf(Environment.GetCommandLineArgs(), "-playtestTraceFirstJump") >= 0;
+        midLevelShopMode = Array.IndexOf(Environment.GetCommandLineArgs(), "-playtestMidLevelShop") >= 0;
+        exerciseGlobalGlider = Array.IndexOf(Environment.GetCommandLineArgs(), "-playtestExerciseGlobalGlider") >= 0;
         passAfterWaypoints = ReadIntArgument("-playtestPassAfterWaypoints", 0);
         startAfterWaypoint = ReadIntArgument("-playtestStartAfterWaypoint", 0);
         startingUnlockedLevel = GameProgress.HighestUnlockedLevel;
@@ -163,6 +182,10 @@ public sealed class AutomatedPlaytester : MonoBehaviour
             }
         }
 
+        ParachuteDescentController glider = hero.GetComponent<ParachuteDescentController>();
+        if (glider != null && glider.IsDeployed && !glider.IsInDescentZone)
+            globalGliderObserved = true;
+
         if (!startSettled)
         {
             if (!hero.IsGrounded)
@@ -193,6 +216,12 @@ public sealed class AutomatedPlaytester : MonoBehaviour
 
             returnHomeRequested = true;
             levelMenu.ReturnToOverview();
+            return;
+        }
+
+        if (midLevelShopMode)
+        {
+            ExerciseMidLevelShop();
             return;
         }
 
@@ -343,10 +372,68 @@ public sealed class AutomatedPlaytester : MonoBehaviour
             }
         }
 
-        bool parachuteHeld = approachingAirbornePass && !hero.IsGrounded &&
-            waypoints[waypointIndex].DeployParachute;
+        if (exerciseGlobalGlider && !globalGliderObserved && !hero.IsGrounded &&
+            globalGliderExerciseState == 0)
+        {
+            globalGliderExerciseState = 1;
+        }
+        bool exerciseGliderHeld = exerciseGlobalGlider && !globalGliderObserved &&
+            globalGliderExerciseState == 1 && !hero.IsGrounded;
+        bool parachuteHeld = (approachingAirbornePass && !hero.IsGrounded &&
+            waypoints[waypointIndex].DeployParachute) || exerciseGliderHeld;
+        float gliderVertical = ResolveRouteGliderVerticalInput(approachingAirbornePass,
+            parachuteHeld);
         hero.SetAutomatedInput(horizontal, Time.unscaledTime < jumpReleaseAt,
-            usePowerRun && Mathf.Abs(horizontal) >= .5f, parachuteHeld);
+            usePowerRun && Mathf.Abs(horizontal) >= .5f, parachuteHeld, gliderVertical);
+    }
+
+    private float ResolveRouteGliderVerticalInput(bool approachingAirbornePass,
+        bool parachuteHeld)
+    {
+        bool eligible = approachingAirbornePass && parachuteHeld && !hero.IsGrounded &&
+            waypointIndex < waypoints.Count && waypoints[waypointIndex].DeployParachute;
+        if (!eligible)
+        {
+            if (routeGliderInputExerciseState == 1 &&
+                (!routeGliderHoverExercised || !routeGliderDiveExercised))
+            {
+                // A very short pass can end before both pulses. Retry at the next authored
+                // glider pass instead of treating time spent grounded as exercise time.
+                routeGliderInputExerciseState = 0;
+            }
+            return 0f;
+        }
+        if (routeGliderInputExerciseState >= 2) return 0f;
+
+        routeGliderWaypointEncountered = true;
+        if (routeGliderInputExerciseState == 0)
+        {
+            routeGliderInputExerciseState = 1;
+            routeGliderInputExerciseStartedAt = Time.unscaledTime;
+        }
+
+        float elapsed = Time.unscaledTime - routeGliderInputExerciseStartedAt;
+        if (elapsed < GliderInputSettleSeconds) return 0f;
+
+        elapsed -= GliderInputSettleSeconds;
+        if (elapsed < GliderHoverPulseSeconds)
+        {
+            routeGliderHoverExercised = true;
+            return 1f;
+        }
+
+        elapsed -= GliderHoverPulseSeconds;
+        if (elapsed < GliderNeutralGapSeconds) return 0f;
+
+        elapsed -= GliderNeutralGapSeconds;
+        if (elapsed < GliderDivePulseSeconds)
+        {
+            routeGliderDiveExercised = true;
+            return -1f;
+        }
+
+        routeGliderInputExerciseState = 2;
+        return 0f;
     }
 
     private bool IsReadyForRouteJump(Transform target, float horizontalDistance)
@@ -368,6 +455,91 @@ public sealed class AutomatedPlaytester : MonoBehaviour
         return horizontalDistance > 0f
             ? hero.transform.position.x >= support.collider.bounds.max.x - launchMargin
             : hero.transform.position.x <= support.collider.bounds.min.x + launchMargin;
+    }
+
+    private void ExerciseMidLevelShop()
+    {
+        if (midLevelShopExerciseState == 0)
+        {
+            midLevelShopController = FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None)
+                .FirstOrDefault(component => component != null &&
+                    component.GetType().Name.IndexOf("MidLevelShop", StringComparison.OrdinalIgnoreCase) >= 0);
+            if (midLevelShopController == null)
+            {
+                Finish(false, "The level has no mid-level shop controller.", false);
+                return;
+            }
+
+            Type type = midLevelShopController.GetType();
+            midLevelShopToggle = type.GetMethod("ToggleShop", BindingFlags.Instance | BindingFlags.Public) ??
+                type.GetMethod("Toggle", BindingFlags.Instance | BindingFlags.Public);
+            MethodInfo open = type.GetMethod("OpenShop", BindingFlags.Instance | BindingFlags.Public) ??
+                type.GetMethod("ShowShop", BindingFlags.Instance | BindingFlags.Public);
+            if (midLevelShopToggle == null && open == null)
+            {
+                Finish(false, "The mid-level shop has no callable open/toggle action.", false);
+                return;
+            }
+
+            (midLevelShopToggle ?? open).Invoke(midLevelShopController, null);
+            midLevelShopExerciseState = 1;
+            return;
+        }
+
+        if (midLevelShopExerciseState == 1)
+        {
+            bool panelVisible = IsMidLevelShopReportedOpen(midLevelShopController) ||
+                FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None)
+                    .Any(transform => transform.gameObject.activeInHierarchy &&
+                        transform.name.IndexOf("shop", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                        transform.name.IndexOf("panel", StringComparison.OrdinalIgnoreCase) >= 0);
+            bool remainedInLevel = SceneManager.GetActiveScene().path == startingScenePath;
+            bool pausedForShopping = MineLevelMenuController.IsPaused &&
+                Mathf.Approximately(Time.timeScale, 0f);
+            if (!panelVisible || !remainedInLevel || !pausedForShopping)
+            {
+                Finish(false, "Opening the mid-level shop did not keep the scene loaded, pause play, and show its panel.", false);
+                return;
+            }
+
+            Type type = midLevelShopController.GetType();
+            MethodInfo close = midLevelShopToggle ??
+                type.GetMethod("CloseShop", BindingFlags.Instance | BindingFlags.Public) ??
+                type.GetMethod("HideShop", BindingFlags.Instance | BindingFlags.Public);
+            if (close == null)
+            {
+                Finish(false, "The mid-level shop has no callable close/toggle action.", false);
+                return;
+            }
+
+            close.Invoke(midLevelShopController, null);
+            midLevelShopExerciseState = 2;
+            return;
+        }
+
+        bool closed = !IsMidLevelShopReportedOpen(midLevelShopController) &&
+            !MineLevelMenuController.IsPaused && Mathf.Approximately(Time.timeScale, 1f) &&
+            SceneManager.GetActiveScene().path == startingScenePath;
+        Finish(closed,
+            closed
+                ? "Opened and closed the shop without leaving or resetting the level."
+                : "Closing the mid-level shop did not restore live play in the same scene.",
+            false);
+    }
+
+    private static bool IsMidLevelShopReportedOpen(Component controller)
+    {
+        if (controller == null) return false;
+        Type type = controller.GetType();
+        foreach (string propertyName in new[] { "IsShopVisible", "IsShopOpen", "IsOpen", "ShopVisible" })
+        {
+            PropertyInfo property = type.GetProperty(propertyName,
+                BindingFlags.Instance | BindingFlags.Public);
+            if (property != null && property.PropertyType == typeof(bool))
+                return (bool)property.GetValue(controller);
+        }
+
+        return false;
     }
 
     private void FindHeroAndBegin()
@@ -513,10 +685,22 @@ public sealed class AutomatedPlaytester : MonoBehaviour
     private void Finish(bool passed, string message, bool exitReached)
     {
         hero?.SetAutomatedInput(0f, false);
+        if (passed && exerciseGlobalGlider && !globalGliderObserved)
+        {
+            passed = false;
+            message = "The requested global hang-glider exercise never deployed outside a chute camera zone.";
+        }
+        if (passed && routeGliderWaypointEncountered &&
+            (!routeGliderHoverExercised || !routeGliderDiveExercised))
+        {
+            passed = false;
+            message = "The route reached a hang-glider waypoint without exercising both Up-hover and Down-dive input.";
+        }
         var result = new PlaytestResult
         {
             scene = startingScenePath,
-            completionMode = returnHomeMode ? "ReturnHome" : usesExitDoor ? "ExitDoor" : "RequiredCrystals",
+            completionMode = midLevelShopMode ? "MidLevelShop" :
+                returnHomeMode ? "ReturnHome" : usesExitDoor ? "ExitDoor" : "RequiredCrystals",
             passed = passed,
             message = message,
             exitReached = exitReached,
@@ -527,6 +711,11 @@ public sealed class AutomatedPlaytester : MonoBehaviour
             collectedBlackCrystals = hero == null ? 0 : hero.BlackBigCrystalCount,
             finalHealth = lastHealth,
             respawns = lastRespawnCount,
+            globalGliderObserved = globalGliderObserved,
+            routeGliderWaypointEncountered = routeGliderWaypointEncountered,
+            routeGliderHoverExercised = routeGliderHoverExercised,
+            routeGliderDiveExercised = routeGliderDiveExercised,
+            midLevelShopExercised = midLevelShopMode && midLevelShopExerciseState >= 2,
             elapsedRealSeconds = Time.unscaledTime - startedAt,
             finalPlayerPosition = lastPlayerPosition
         };
@@ -589,6 +778,11 @@ public sealed class AutomatedPlaytester : MonoBehaviour
         public int collectedBlackCrystals;
         public int finalHealth;
         public int respawns;
+        public bool globalGliderObserved;
+        public bool routeGliderWaypointEncountered;
+        public bool routeGliderHoverExercised;
+        public bool routeGliderDiveExercised;
+        public bool midLevelShopExercised;
         public float elapsedRealSeconds;
         public Vector3 finalPlayerPosition;
     }

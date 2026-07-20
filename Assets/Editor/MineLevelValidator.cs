@@ -15,6 +15,8 @@ public static class MineLevelValidator
 {
     private const string Overview = "Assets/Scenes/DungeonOverview.unity";
     private const string GameOver = "Assets/Scenes/GameOver.unity";
+    private const string SilverOverview = "Assets/Scenes/SilverDungeonOverview.unity";
+    private const string SilverLevel = "Assets/Scenes/SilverLevel1_SilverLode.unity";
     private const string PlatformArt = "Assets/Art/Generated/MineRockBronzePlatform.png";
     private const string MinerArt = "Assets/Art/Generated/MinerCharacterV2.png";
     private const string MinerAnimationArt = "Assets/Art/Generated/MinerAnimationSheet.png";
@@ -29,12 +31,24 @@ public static class MineLevelValidator
     private const string ClosedChestArt = "Assets/Art/Generated/BronzeRewardChest.png";
     private const string OpenChestArt = "Assets/Art/Generated/BronzeRewardChestOpen.png";
     private const string SpikeArt = "Assets/Art/Generated/BronzeSpike.png";
+    private const string SharedRockFillArt = "Assets/Art/Silver/SharedCaveRockTile.png";
+    private const string RockEdgeArt = "Assets/Art/Silver/RockEdgeTile.png";
+    private const string RockCornerArt = "Assets/Art/Silver/RockCornerTile.png";
+    private const string PolishedSpikeArt = "Assets/Art/Silver/PolishedBronzeSpikes.png";
+    private const string CutGemArt = "Assets/Art/Silver/TintableCutGem.png";
+    private const string SilverChestClosedArt = "Assets/Art/Silver/SilverBoundChestClosed.png";
+    private const string SilverChestOpenArt = "Assets/Art/Silver/SilverBoundChestOpen.png";
+    private const string HangGliderArt = "Assets/Art/Silver/MinerHangGlider.png";
+    private const string HangGliderFloatRightArt = "Assets/Art/Silver/HangGliderFloatRight.png";
+    private const string HangGliderDiveRightArt = "Assets/Art/Silver/HangGliderDiveRight.png";
+    private const string HangGliderBankRightArt = "Assets/Art/Silver/HangGliderBankRight.png";
 
     private enum ShaftDirection
     {
         Vertical,
         Angled,
         Horizontal,
+        Descent,
         Mixed
     }
 
@@ -60,7 +74,7 @@ public static class MineLevelValidator
     {
         new(1, "Level1_TheMines", ShaftDirection.Vertical, 11),
         new(2, "Level2_SlidingAscent", ShaftDirection.Angled, 6),
-        new(3, "Level3_ChasmRun", ShaftDirection.Horizontal, 9),
+        new(3, "Level3_ChasmRun", ShaftDirection.Descent, 7),
         new(4, "Level4_CopperColumn", ShaftDirection.Vertical, 16),
         new(5, "Level5_CrookedIncline", ShaftDirection.Angled, 10),
         new(6, "Level6_BrokenRail", ShaftDirection.Horizontal, 12),
@@ -88,15 +102,16 @@ public static class MineLevelValidator
         }
 
         ValidateIncreasingLengths(routeLengths);
+        ValidateSilverDungeonWhenBuilt();
         ValidateBuildSettings();
 
         EditorSceneManager.OpenScene(Overview, OpenSceneMode.Single);
-        Debug.Log("MINES VALIDATION PASSED: overview, reset-on-Game-Over flow, twelve levels, mixed Level 12 parachute sections, route headroom, safe pits, progression, economy, and miner presentation are ready.");
+        Debug.Log("MINES VALIDATION PASSED: Bronze Mines Levels 1-12 and the available Silver dungeon content satisfy progression, seven-heart health, counted keys/chests, global hang-glider, shop, visual-theme, hazard, and route contracts.");
     }
 
     private static void ValidateEconomyRules()
     {
-        Require(GameProgress.BaseHearts == 5, "A level must begin with five base hearts.");
+        Require(GameProgress.BaseHearts == 7, "Every level must begin with seven base hearts.");
         Require(GameProgress.StartingLives == 3, "A new game must begin with three lives.");
         Require(GameProgress.MaxMineLevel == 12, "The Bronze Mines progression contract must include Level 12.");
         Require(GameProgress.HealthPotionPrice == 3, "A health potion must cost three green gems.");
@@ -129,9 +144,13 @@ public static class MineLevelValidator
                     StringComparison.OrdinalIgnoreCase),
                 $"Default {expected.Key} controller path must remain {expected.Value}.");
         }
+        string interactActionName = MineInput.GetActionName(MineButtonAction.Interact);
         Require(MineInput.GetActionName(MineButtonAction.Jump) == "JUMP" &&
-                MineInput.GetActionName(MineButtonAction.Interact) == "INTERACT / PARACHUTE",
-            "Parachute must share contextual Interact/Up/W input while Jump remains independent.");
+                interactActionName.StartsWith("INTERACT", StringComparison.Ordinal) &&
+                (interactActionName.Contains("PARACHUTE") || interactActionName.Contains("GLIDER")),
+            "The global hang glider must share controller X/Interact while Jump remains independent.");
+        Require(ParachuteDescentControllerHasGlobalFlightContract(),
+            "Hang-glider tuning must expose hover, neutral-glide, and faster-down modes independent of chute zones.");
 
         InputActionAsset mappingAsset = Resources.Load<InputActionAsset>("MineControllerActions");
         Require(mappingAsset != null, "The persistent controller mapping action asset is missing from Resources.");
@@ -416,7 +435,7 @@ public static class MineLevelValidator
         Require(hero.transform.lossyScale.x >= 1.75f && hero.transform.lossyScale.x <= 2.1f,
             $"{level.SceneName} miner should remain approximately 125% of the original hero size.");
         Require(SerializedInt(health, "maxHealth") == GameProgress.BaseHearts,
-            $"{level.SceneName} serialized base health must be five hearts.");
+            $"{level.SceneName} serialized base health must be seven hearts.");
 
         SpriteRenderer[] renderers = hero.GetComponentsInChildren<SpriteRenderer>(true);
         SpriteRenderer miner = renderers.FirstOrDefault(renderer =>
@@ -442,12 +461,27 @@ public static class MineLevelValidator
                 transform.name.IndexOf("pick", StringComparison.OrdinalIgnoreCase) >= 0),
             $"{level.SceneName} still contains a pick or pick-hand rig after pickaxe removal.");
         ParachuteDescentController parachute = hero.GetComponent<ParachuteDescentController>();
+        HangGliderVisualController gliderVisual = hero.GetComponent<HangGliderVisualController>();
         SpriteRenderer parachuteRenderer = renderers.FirstOrDefault(renderer =>
-            renderer.name.IndexOf("parachute", StringComparison.OrdinalIgnoreCase) >= 0);
-        Require(parachute != null && parachuteRenderer != null && !parachuteRenderer.enabled &&
-                parachuteRenderer.transform.localScale.x >= 1f &&
-                parachuteRenderer.transform.localPosition.y <= 1.2f,
-            $"{level.SceneName} hero needs the hidden reusable Level 12 parachute visual.");
+            renderer.name.IndexOf("parachute", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            renderer.name.IndexOf("glider", StringComparison.OrdinalIgnoreCase) >= 0);
+        Require(parachute != null && gliderVisual != null && gliderVisual.HasCompleteDirectionalArt &&
+                gliderVisual.CurrentState == HangGliderVisualState.Stowed &&
+                gliderVisual.GliderRenderer == parachuteRenderer &&
+                parachuteRenderer != null && !parachuteRenderer.enabled &&
+                parachuteRenderer.sprite != null && parachuteRenderer.transform.localScale.y > 0f &&
+                parachuteRenderer.transform.localPosition.y > 0f &&
+                parachuteRenderer.sprite.bounds.size.x > parachuteRenderer.sprite.bounds.size.y * 1.5f,
+            $"{level.SceneName} hero needs hidden hover/float/dive/left/right hang-glider presentation.");
+        Require(NormalizePath(AssetDatabase.GetAssetPath(gliderVisual.HoverFrontSprite)) ==
+                    NormalizePath(HangGliderArt) &&
+                NormalizePath(AssetDatabase.GetAssetPath(gliderVisual.FloatRightSprite)) ==
+                    NormalizePath(HangGliderFloatRightArt) &&
+                NormalizePath(AssetDatabase.GetAssetPath(gliderVisual.DiveRightSprite)) ==
+                    NormalizePath(HangGliderDiveRightArt) &&
+                NormalizePath(AssetDatabase.GetAssetPath(gliderVisual.BankRightSprite)) ==
+                    NormalizePath(HangGliderBankRightArt),
+            $"{level.SceneName} glider states must use the authored front hover and side-profile directional art.");
         Require(!hero.GetComponentsInChildren<Transform>(true).Any(transform =>
                 transform != hero.transform && (transform.name.IndexOf("hat", StringComparison.OrdinalIgnoreCase) >= 0 ||
                                                 transform.name.IndexOf("helmet", StringComparison.OrdinalIgnoreCase) >= 0)),
@@ -469,6 +503,13 @@ public static class MineLevelValidator
         Require(LevelExitDoor.ExitPrompt.Contains("UP") && LevelExitDoor.ExitPrompt.Contains("W") &&
                 LevelExitDoor.ExitPrompt.Contains("EXIT"),
             $"{level.SceneName} exit prompt must identify the current controller binding and keyboard Up/W.");
+        Require(door.DoorAnimator != null || door.GetComponent<MineDoorAnimator>() != null,
+            $"{level.SceneName} exit controller must wait for its door animator before traversal.");
+        ValidateDoorAnimation(door.gameObject, $"{level.SceneName} exit");
+        MineDoorAnimator doorAnimator = door.DoorAnimator ?? door.GetComponent<MineDoorAnimator>();
+        Require(doorAnimator != null && doorAnimator.PassageBlocker != null &&
+                doorAnimator.PassageBlocker.enabled && !doorAnimator.PassageBlocker.isTrigger,
+            $"{level.SceneName} exit door must physically block the passage until it opens.");
 
         Transform[] foundations = SceneTransforms()
             .Where(transform => transform.name == "Exit Door Foundation (Required)").ToArray();
@@ -490,10 +531,17 @@ public static class MineLevelValidator
         Require(entrance.Hero == hero && Vector2.Distance(entrance.GameplayPosition,
                 hero.transform.position) <= .05f && entrance.EntranceSeconds >= .5f,
             $"{level.SceneName} entrance door must walk the scene hero to the authored start position.");
-        SpriteRenderer renderer = entrance.GetComponent<SpriteRenderer>();
+        Require(entrance.DoorAnimator != null || entrance.GetComponent<MineDoorAnimator>() != null,
+            $"{level.SceneName} entrance controller must wait for its door animator before traversal.");
+        MineDoorAnimator entranceAnimator = entrance.GetComponentInChildren<MineDoorAnimator>(true);
+        SpriteRenderer renderer = entranceAnimator == null
+            ? entrance.GetComponent<SpriteRenderer>()
+            : entranceAnimator.ClosedRenderer;
         Require(renderer != null && renderer.sprite != null && renderer.sortingOrder == 5 &&
-                NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(DoorArt),
-            $"{level.SceneName} entrance must use the mine-door art behind the emerging miner.");
+                (NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(DoorArt) ||
+                 renderer.GetComponentInParent<ThemedMetalFlakes>() != null ||
+                 entranceAnimator != null),
+            $"{level.SceneName} entrance must use the themed mine-door art behind the emerging miner.");
         Require(Mathf.Abs(entrance.transform.position.x - entrance.GameplayPosition.x) <= .1f &&
                 entrance.transform.position.y > entrance.GameplayPosition.y,
             $"{level.SceneName} entrance door is not aligned behind the hero's start position.");
@@ -501,6 +549,7 @@ public static class MineLevelValidator
         Require(entrance.GetComponentsInChildren<Collider2D>(true).Length == 0 &&
                 entrance.GetComponent<LevelExitDoor>() == null,
             $"{level.SceneName} entrance door must be noninteractive and have no collision trigger.");
+        ValidateDoorAnimation(entrance.gameObject, $"{level.SceneName} entrance");
 
         Transform[] foundations = SceneTransforms().Where(transform =>
             transform.name == "Entrance Door Foundation (Required)").ToArray();
@@ -508,17 +557,27 @@ public static class MineLevelValidator
             $"{level.SceneName} must reuse exactly one start platform as its entrance foundation.");
         Collider2D foundation = foundations[0].GetComponent<Collider2D>();
         SpriteRenderer foundationRenderer = foundations[0].GetComponent<SpriteRenderer>();
+        if (foundationRenderer == null)
+            foundationRenderer = foundations[0].GetComponentInChildren<SpriteRenderer>(true);
         float arrivalClearance = foundation == null
             ? float.MaxValue
             : entrance.GameplayPosition.y - foundation.bounds.max.y;
+        bool hasThemedFoundation = foundations[0].GetComponentInChildren<ThemedMetalFlakes>(true) != null;
+        string foundationSpritePath = foundationRenderer == null || foundationRenderer.sprite == null
+            ? "<none>"
+            : NormalizePath(AssetDatabase.GetAssetPath(foundationRenderer.sprite));
         Require(foundation != null && foundation.enabled && !foundation.isTrigger &&
                 foundation.gameObject.layer == LayerMask.NameToLayer("Ground") &&
-                foundation.CompareTag("Ground") && foundationRenderer != null &&
-                NormalizePath(AssetDatabase.GetAssetPath(foundationRenderer.sprite)) == NormalizePath(PlatformArt) &&
+                foundation.CompareTag("Ground") && foundationRenderer != null && foundationRenderer.sprite != null &&
+                (foundationSpritePath == NormalizePath(PlatformArt) || hasThemedFoundation) &&
                 foundation.bounds.min.x < entrance.transform.position.x &&
                 foundation.bounds.max.x > entrance.transform.position.x &&
                 arrivalClearance >= .7f && arrivalClearance <= 1.7f,
-            $"{level.SceneName} entrance foundation must be the solid bronze start platform directly beneath arrival.");
+            $"{level.SceneName} entrance foundation must be the solid themed start platform directly beneath arrival. " +
+            $"collider={foundation != null}, enabled={foundation != null && foundation.enabled}, " +
+            $"trigger={foundation != null && foundation.isTrigger}, layer={foundation?.gameObject.layer}, " +
+            $"tag={(foundation == null ? "<none>" : foundation.tag)}, renderer={foundationRenderer != null}, " +
+            $"sprite={foundationSpritePath}, flakes={hasThemedFoundation}, clearance={arrivalClearance:0.00}.");
     }
 
     private static void ValidateLevelMenu(LevelExpectation level)
@@ -545,6 +604,7 @@ public static class MineLevelValidator
         Require(buttons.Any(button => HasPersistentListener(button, menu, nameof(MineLevelMenuController.ResumeGame))) &&
                 buttons.Any(button => HasPersistentListener(button, menu, nameof(MineLevelMenuController.ReturnToOverview))),
             $"{level.SceneName} pause panel needs wired Resume and Return to Overview/Shop buttons.");
+        ValidateMidLevelShop(level.SceneName, menu);
         ValidateInputSystemEventSystem(level.SceneName, false);
     }
 
@@ -562,12 +622,17 @@ public static class MineLevelValidator
         SpriteRenderer chestRenderer = chest.GetComponent<SpriteRenderer>();
         Require(chestTrigger != null && chestTrigger.enabled && chestTrigger.isTrigger,
             $"{level.SceneName} chest needs an enabled proximity trigger for Up/W interaction and replay feedback.");
+        string closedChestPath = chestRenderer == null || chestRenderer.sprite == null
+            ? string.Empty
+            : NormalizePath(AssetDatabase.GetAssetPath(chestRenderer.sprite));
         Require(chestRenderer != null && chestRenderer.sprite != null &&
-                NormalizePath(AssetDatabase.GetAssetPath(chestRenderer.sprite)) == NormalizePath(ClosedChestArt),
-            $"{level.SceneName} chest needs the authored closed-chest sprite.");
+                (closedChestPath == NormalizePath(ClosedChestArt) ||
+                 closedChestPath == NormalizePath(SilverChestClosedArt)),
+            $"{level.SceneName} chest needs the authored metal-bound closed-chest sprite.");
         Require(chest.OpenedSprite != null && chest.OpenedSprite != chestRenderer.sprite &&
-                NormalizePath(AssetDatabase.GetAssetPath(chest.OpenedSprite)) == NormalizePath(OpenChestArt),
-            $"{level.SceneName} chest needs a distinct configured opened-chest sprite for replayed levels.");
+                (NormalizePath(AssetDatabase.GetAssetPath(chest.OpenedSprite)) == NormalizePath(OpenChestArt) ||
+                 NormalizePath(AssetDatabase.GetAssetPath(chest.OpenedSprite)) == NormalizePath(SilverChestOpenArt)),
+            $"{level.SceneName} chest needs a distinct configured opened metal-bound sprite for replayed levels.");
 
         Collider2D chestPerch = chest.transform.parent == null ? null :
             chest.transform.parent.GetComponentsInChildren<Collider2D>(true).FirstOrDefault(collider =>
@@ -635,12 +700,17 @@ public static class MineLevelValidator
             }
 
             SpriteRenderer renderer = spike.GetComponent<SpriteRenderer>();
-            Require(renderer != null && renderer.sprite != null &&
-                    NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(SpikeArt) &&
-                    Mathf.Abs(renderer.sprite.pixelsPerUnit - 24f) <= .01f &&
-                    renderer.sprite.rect.size == new Vector2(40f,24f) &&
-                    Vector2.Distance(renderer.sprite.pivot,new Vector2(20f,12f)) <= .01f,
-                $"{level.SceneName} spike '{spike.name}' must use the centered 40x24, 24-PPU BronzeSpike art.");
+            string spikePath = renderer == null || renderer.sprite == null
+                ? string.Empty
+                : NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite));
+            bool usesLegacySpike = spikePath == NormalizePath(SpikeArt) &&
+                Mathf.Abs(renderer.sprite.pixelsPerUnit - 24f) <= .01f &&
+                renderer.sprite.rect.size == new Vector2(40f,24f) &&
+                Vector2.Distance(renderer.sprite.pivot,new Vector2(20f,12f)) <= .01f;
+            bool usesPolishedSpike = spikePath == NormalizePath(PolishedSpikeArt) &&
+                spike.GetComponent<SpriteShineAnimator>() != null;
+            Require(renderer != null && renderer.sprite != null && (usesLegacySpike || usesPolishedSpike),
+                $"{level.SceneName} spike '{spike.name}' must use either the legacy inset art or the polished half-scale shining bronze asset.");
 
             float[] toothCenters = { -.5208333f, .0208333f, .5625f };
             foreach (float center in toothCenters)
@@ -701,9 +771,16 @@ public static class MineLevelValidator
         foreach (BoxCollider2D platform in platforms)
         {
             SpriteRenderer renderer = platform.GetComponent<SpriteRenderer>();
-            Require(renderer != null && renderer.sprite != null &&
-                    NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(PlatformArt),
-                $"{level.SceneName} platform '{platform.name}' is not using the bronze-veined rock artwork.");
+            if (renderer == null)
+                renderer = platform.GetComponentInChildren<SpriteRenderer>(true);
+            bool legacyBronze = renderer != null && renderer.sprite != null &&
+                NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(PlatformArt);
+            ThemedMetalFlakes themedFlakes = platform.GetComponentInChildren<ThemedMetalFlakes>(true);
+            bool themedBronze = renderer != null && renderer.sprite != null && themedFlakes != null &&
+                themedFlakes.Theme != null &&
+                themedFlakes.Theme.DungeonId == GameProgress.BronzeDungeonId;
+            Require(legacyBronze || themedBronze,
+                $"{level.SceneName} platform '{platform.name}' is not using legacy or centrally themed bronze-veined rock artwork.");
             float localThickness = platform.size.y * Mathf.Abs(platform.transform.lossyScale.y);
             Require(localThickness <= .85f,
                 $"{level.SceneName} platform '{platform.name}' is too thick vertically ({localThickness:0.00}).");
@@ -906,6 +983,29 @@ public static class MineLevelValidator
                 ValidateHorizontalPits(level, hero, route);
                 return Range(route.Select(platform => platform.bounds.center.x));
             }
+            case ShaftDirection.Descent:
+            {
+                Require(level.Number == 3 && SceneComponents<BoundedCameraFollow>().Length == 1,
+                    "Level 3 parachute descent needs one bounded follow camera.");
+                ParachuteDescentZone[] zones = SceneComponents<ParachuteDescentZone>();
+                ParachuteLaunchZone[] launches = SceneComponents<ParachuteLaunchZone>();
+                Require(zones.Length == 1 && zones[0].MinimumDepth >= 24f &&
+                        launches.Length == 1 && launches[0].Sign == null &&
+                        launches[0].GetComponent<BoxCollider2D>() is { isTrigger: true },
+                    "Level 3 needs one deep parachute shaft with a silent launch area.");
+                Require(SceneComponents<ParachuteInstructionDisplay>().Length == 0,
+                    "Level 3 must not display parachute instruction text.");
+                Collider2D descent = zones[0].GetComponent<Collider2D>();
+                int descentGems = SceneComponents<GreenCrystalCollectible>().Count(gem =>
+                    descent != null && descent.bounds.Contains(gem.transform.position));
+                Require(descentGems >= 4,
+                    "Level 3 parachute shaft needs a visible gem trail through its safe descent lanes.");
+                Require(SceneTransforms().Any(transform => transform.name == "Parachute Landing Shelf 01") &&
+                        SceneTransforms().Count(transform =>
+                            transform.name.StartsWith("Parachute Landing Exit Step", StringComparison.OrdinalIgnoreCase)) == 2,
+                    "Level 3 needs a safe landing and two-step exit tunnel after the descent.");
+                return zones[0].MinimumDepth;
+            }
             case ShaftDirection.Mixed:
                 return ValidateLevel12MixedRoute(level);
             default:
@@ -1028,11 +1128,8 @@ public static class MineLevelValidator
             "Level 12 camera needs zoomed-out framing plus smoothed route, facing, and descent transitions.");
 
         ParachuteInstructionDisplay[] chutePrompts = SceneComponents<ParachuteInstructionDisplay>();
-        Require(chutePrompts.Length == 1 && chutePrompts[0].Parachute ==
-                levelHero.GetComponent<ParachuteDescentController>() &&
-                chutePrompts[0].PromptPanel != null && !chutePrompts[0].PromptPanel.activeSelf &&
-                chutePrompts[0].PromptText != null,
-            "Level 12 needs one hidden, dynamically mapped parachute prompt for its shaft approaches.");
+        Require(chutePrompts.Length == 0,
+            "Level 12 must not display parachute instruction text.");
 
         MineRouteSection[] sections = SceneComponents<MineRouteSection>()
             .OrderBy(section => section.Order).ToArray();
@@ -1064,8 +1161,8 @@ public static class MineLevelValidator
             "Level 12 must have one deep parachute zone for each downward section.");
         ParachuteLaunchZone[] launchZones = SceneComponents<ParachuteLaunchZone>();
         Require(launchZones.Length == 3 && launchZones.All(launch =>
-                launch.GetComponent<BoxCollider2D>() is { isTrigger: true } && launch.Sign != null),
-            "Level 12 must have one marked, non-solid parachute launch area before each shaft.");
+                launch.GetComponent<BoxCollider2D>() is { isTrigger: true } && launch.Sign == null),
+            "Level 12 must have one silent, non-solid parachute launch area before each shaft.");
 
         Physics2D.SyncTransforms();
         foreach (MineRouteSection descent in descents)
@@ -1131,6 +1228,10 @@ public static class MineLevelValidator
             waypoint.Mode == AutomatedWaypointMode.AirbornePass).ToArray();
         Require(airborne.Length >= 12 && airborne.All(waypoint => waypoint.DeployParachute),
             "Level 12 descents need parachute-enabled airborne safe-lane waypoints around every major hazard.");
+        GreenCrystalCollectible[] routeGems = SceneComponents<GreenCrystalCollectible>();
+        Require(zones.All(zone =>
+                routeGems.Count(gem => zone.GetComponent<Collider2D>().bounds.Contains(gem.transform.position)) >= 4),
+            "Every Level 12 parachute shaft needs a four-gem trail through its safe descent lanes.");
 
         FatalFallZone[] localPits = SceneComponents<FatalFallZone>().Where(zone =>
             zone.gameObject.activeInHierarchy &&
@@ -1150,8 +1251,16 @@ public static class MineLevelValidator
                     .GetComponentsInChildren<BoxCollider2D>(true)
                     .Single(collider => collider.name.IndexOf("Mixed Horizontal Hub",
                         StringComparison.OrdinalIgnoreCase) >= 0);
-                Require(transitionHub.bounds.size.x >= 7.5f,
-                    $"Level 12 climb {sections[index].Order} needs a wide, nonlethal horizontal launch hub.");
+                BoxCollider2D firstLanding = sections[index + 1]
+                    .GetComponentsInChildren<BoxCollider2D>(true)
+                    .Where(collider => collider.name.IndexOf("Mixed Pit Ledge",
+                        StringComparison.OrdinalIgnoreCase) >= 0)
+                    .OrderBy(collider => collider.bounds.center.x)
+                    .First();
+                float transitionGap = firstLanding.bounds.min.x - transitionHub.bounds.max.x;
+                Require(transitionGap >= 1.25f && transitionGap <= 3f,
+                    $"Level 12 climb {sections[index].Order} needs a full body-width, reachable opening " +
+                    $"to its horizontal route; gap is {transitionGap:0.00} units.");
             }
         }
         int expectedLocalPits = sections.Count(section =>
@@ -1243,8 +1352,10 @@ public static class MineLevelValidator
         Require(visibleWalls.Length == 6 && visibleWalls.All(wall =>
                 wall.GetComponentsInChildren<SpriteRenderer>(true).Any(renderer =>
                     renderer.sprite != null && renderer.sortingOrder == 1 &&
-                    NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(PlatformArt))),
-            "Every Level 12 shaft collider needs a matching bronze-veined rock wall visual.");
+                    (NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(PlatformArt) ||
+                     NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(SharedRockFillArt))) &&
+                wall.GetComponentInChildren<ThemedMetalFlakes>(true) != null),
+            "Every Level 12 shaft collider needs a matching centrally themed bronze-flecked rock wall visual.");
 
         Require(SceneComponents<GreenCrystalCollectible>().Count(gem => gem.Value == 1) >= 20,
             "The long Level 12 route needs regular green-crystal rewards.");
@@ -1281,16 +1392,218 @@ public static class MineLevelValidator
             "Straight-up Levels 1, 4, 7, and 10 must become progressively longer.");
         Require(lengths[8] > lengths[5] + 10f && lengths[11] > lengths[8] + 10f,
             "Angled Levels 5, 8, and 11 must become progressively longer.");
-        Require(lengths[6] > lengths[3] + 10f && lengths[9] > lengths[6] + 10f,
-            "Horizontal Levels 3, 6, and 9 must become progressively longer.");
+        Require(lengths[3] >= 24f,
+            "Level 3 must remain a deep introductory parachute descent.");
+        Require(lengths[9] > lengths[6] + 10f,
+            "Horizontal Levels 6 and 9 must become progressively longer.");
+    }
+
+    private static void ValidateSilverDungeonWhenBuilt()
+    {
+        bool overviewExists = File.Exists(ProjectFilePath(SilverOverview));
+        bool levelExists = File.Exists(ProjectFilePath(SilverLevel));
+        if (!overviewExists && !levelExists)
+        {
+            Debug.LogWarning("SILVER VALIDATION DEFERRED: SilverDungeonOverview and " +
+                "SilverLevel1_SilverLode have not been generated yet.");
+            return;
+        }
+
+        Require(overviewExists && levelExists,
+            "SilverDungeonOverview and SilverLevel1_SilverLode must be generated together.");
+        ValidateSilverOverview();
+        ValidateSilverLevel();
+    }
+
+    private static void ValidateSilverOverview()
+    {
+        OpenScene(SilverOverview);
+        Camera[] cameras = SceneComponents<Camera>();
+        Require(cameras.Length == 1 && cameras[0].enabled && cameras[0].CompareTag("MainCamera"),
+            "Silver overview needs one enabled MainCamera.");
+        SceneLoadButton[] sceneButtons = SceneComponents<SceneLoadButton>();
+        Require(sceneButtons.Any(button => button.TargetScene == "SilverLevel1_SilverLode" &&
+                                           button.BeginsPlaytestRun),
+            "Silver overview needs a playtest-aware button that starts Silver Dungeon Level 1.");
+        Require(sceneButtons.Any(button => button.TargetScene == "DungeonOverview"),
+            "Silver overview needs a route back to the Bronze dungeon overview.");
+        Require(SceneComponents<DungeonOverviewBoundary>().Length == 1,
+            "Silver overview must end the temporary MINER sandbox when it is entered.");
+        ValidateInputSystemEventSystem("Silver overview", true);
+    }
+
+    private static void ValidateSilverLevel()
+    {
+        OpenScene(SilverLevel);
+        Physics2D.SyncTransforms();
+
+        Camera[] cameras = SceneComponents<Camera>();
+        Require(cameras.Length == 1 && cameras[0].enabled && cameras[0].orthographic &&
+                cameras[0].CompareTag("MainCamera"),
+            "Silver Level 1 needs one enabled orthographic MainCamera.");
+
+        HeroMovement[] heroes = SceneComponents<HeroMovement>();
+        Require(heroes.Length == 1, "Silver Level 1 must contain exactly one miner.");
+        HeroMovement hero = heroes[0];
+        PlayerHealth health = hero.GetComponent<PlayerHealth>();
+        MineRunInventory inventory = hero.GetComponent<MineRunInventory>();
+        ParachuteDescentController glider = hero.GetComponent<ParachuteDescentController>();
+        HangGliderVisualController gliderVisual = hero.GetComponent<HangGliderVisualController>();
+        Require(health != null && SerializedInt(health, "maxHealth") == 7,
+            "Silver Level 1 must serialize the game-wide seven-heart starting health.");
+        Require(inventory != null && inventory.DungeonId == GameProgress.SilverDungeonId &&
+                inventory.LevelNumber == 1 && inventory.HasStatusDisplay,
+            "Silver Level 1 inventory must be scoped to silver/1 and display its counted key total.");
+        SpriteRenderer gliderRenderer = hero.GetComponentsInChildren<SpriteRenderer>(true)
+            .FirstOrDefault(renderer => renderer.name.IndexOf("glider", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                        renderer.name.IndexOf("parachute", StringComparison.OrdinalIgnoreCase) >= 0);
+        Require(glider != null && gliderVisual != null && gliderVisual.HasCompleteDirectionalArt &&
+                gliderVisual.CurrentState == HangGliderVisualState.Stowed &&
+                gliderVisual.GliderRenderer == gliderRenderer &&
+                gliderRenderer != null && !gliderRenderer.enabled &&
+                gliderRenderer.sprite != null &&
+                NormalizePath(AssetDatabase.GetAssetPath(gliderRenderer.sprite)) == NormalizePath(HangGliderArt) &&
+                gliderRenderer.transform.localPosition.y > 0f && gliderRenderer.transform.localScale.y > 0f &&
+                gliderRenderer.sprite.bounds.size.x > gliderRenderer.sprite.bounds.size.y * 1.5f,
+            "Silver miner needs a smaller animated hover/float/dive/directional hang glider hidden until X deploys it.");
+
+        AutomatedPlaytestWaypoint[] waypoints = SceneComponents<AutomatedPlaytestWaypoint>()
+            .OrderBy(waypoint => waypoint.Order).ToArray();
+        int firstWaypointOrder = waypoints.Length == 0 ? -1 : waypoints[0].Order;
+        Require(waypoints.Length >= 20 && (firstWaypointOrder == 0 || firstWaypointOrder == 1) &&
+                waypoints.Select(waypoint => waypoint.Order)
+                    .SequenceEqual(Enumerable.Range(firstWaypointOrder, waypoints.Length)),
+            "Silver Level 1 needs at least 20 contiguous route waypoints for its long hand-drawn path.");
+        Require(waypoints.Count(waypoint => waypoint.Mode == AutomatedWaypointMode.AirbornePass &&
+                                           waypoint.DeployParachute) >= 6,
+            "Silver Level 1 needs glider-enabled airborne waypoints through both major chute sections.");
+
+        ParachuteDescentZone[] chuteZones = SceneComponents<ParachuteDescentZone>();
+        Require(chuteZones.Length >= 2 && chuteZones.All(zone =>
+                zone.GetComponent<Collider2D>() is { enabled: true, isTrigger: true }),
+            "Silver Level 1 needs both major camera-framing chute zones as non-solid triggers.");
+        Require(chuteZones.All(zone => zone.MinimumDepth >= 12f),
+            "Each Silver chute camera zone must cover a substantial descent.");
+
+        BronzeKeyCollectible[] keys = SceneComponents<BronzeKeyCollectible>();
+        RewardChest[] chests = SceneComponents<RewardChest>();
+        Require(keys.Length >= 5 && chests.Length >= 5 && keys.Length == chests.Length,
+            "Silver Level 1 needs multiple keys and an equal number of key-consuming chests.");
+        Require(keys.All(key => key.DungeonId == GameProgress.SilverDungeonId && key.LevelNumber == 1 &&
+                                key.GetComponent<Collider2D>() is { enabled: true, isTrigger: true }) &&
+                keys.Select(key => key.PickupId).Distinct(StringComparer.Ordinal).Count() == keys.Length,
+            "Every Silver key needs a unique persisted pickup ID in the silver/1 inventory scope.");
+        Require(chests.All(chest => chest.DungeonId == GameProgress.SilverDungeonId && chest.LevelNumber == 1 &&
+                                     chest.GetComponent<Collider2D>() is { enabled: true, isTrigger: true }) &&
+                chests.Select(chest => chest.ChestId).Distinct(StringComparer.Ordinal).Count() == chests.Length,
+            "Every Silver chest needs a unique persisted chest ID in the silver/1 inventory scope.");
+        foreach (RewardChest chest in chests)
+        {
+            SpriteRenderer renderer = chest.GetComponent<SpriteRenderer>();
+            Require(renderer != null && renderer.sprite != null &&
+                    NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(SilverChestClosedArt) &&
+                    chest.OpenedSprite != null &&
+                    NormalizePath(AssetDatabase.GetAssetPath(chest.OpenedSprite)) == NormalizePath(SilverChestOpenArt) &&
+                    chest.OpenedSprite != renderer.sprite && chest.TotalOpeningDuration >= .35f,
+                $"Silver chest '{chest.name}' needs metal-bound closed/open keyhole art and a visible opening animation.");
+        }
+
+        ThemedMetalFlakes[] flakes = SceneComponents<ThemedMetalFlakes>();
+        DungeonVisualTheme[] themes = flakes.Select(flake => flake.Theme).Where(theme => theme != null)
+            .Distinct().ToArray();
+        Require(flakes.Length >= 6 && themes.Length == 1 &&
+                themes[0].DungeonId == GameProgress.SilverDungeonId &&
+                themes[0].MetalFlakeDensity > 0f &&
+                flakes.All(flake => flake.EffectiveFlakeSprite != null),
+            "Silver rock surfaces must share one Silver theme asset so metal color, density, seed, and flake sprite are changed centrally.");
+        Color silver = themes[0].MetalBase;
+        Require(Mathf.Max(silver.r, Mathf.Max(silver.g, silver.b)) -
+                Mathf.Min(silver.r, Mathf.Min(silver.g, silver.b)) <= .22f,
+            "Silver Level 1 theme metal must remain a neutral silver rather than a bronze tint.");
+
+        SpriteRenderer[] sceneRenderers = SceneComponents<SpriteRenderer>();
+        HashSet<string> rendererPaths = sceneRenderers.Where(renderer => renderer.sprite != null)
+            .Select(renderer => NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Require(rendererPaths.Contains(NormalizePath(SharedRockFillArt)) &&
+                rendererPaths.Contains(NormalizePath(RockEdgeArt)) &&
+                rendererPaths.Contains(NormalizePath(RockCornerArt)),
+            "Silver cave must use separate fill, repeating edge, and corner-cap tiles so exposed rocks end naturally.");
+
+        FakeWallReveal[] fakeWalls = SceneComponents<FakeWallReveal>();
+        Require(fakeWalls.Length >= 1 && fakeWalls.All(wall =>
+                wall.GetComponentsInChildren<Collider2D>(true).All(collider => !collider.enabled || collider.isTrigger)),
+            "Silver Level 1 needs a visually solid but collision-free fake rock wall for the secret room.");
+        GreenCrystalCollectible[] gems = SceneComponents<GreenCrystalCollectible>();
+        Require(gems.Any(gem => gem.Value == 5) && gems.Any(gem => gem.Value == 20),
+            "The Silver secret route needs both blue and purple gem rewards.");
+        Require(fakeWalls.Any(wall => gems.Count(gem => gem.Value >= 5 &&
+                Vector2.Distance(gem.transform.position, wall.transform.position) <= 15f) >= 3),
+            "Blue/purple rewards must be clustered behind or beside the fake rock wall, not on the main path.");
+
+        GreenCrystalCollectible[] cutGems = gems.Where(gem => gem.GetComponent<SpriteRenderer>() != null).ToArray();
+        Require(cutGems.Length >= 12 && cutGems.All(gem =>
+        {
+            SpriteRenderer renderer = gem.GetComponent<SpriteRenderer>();
+            float scale = Mathf.Max(Mathf.Abs(gem.transform.localScale.x), Mathf.Abs(gem.transform.localScale.y));
+            return NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(CutGemArt) &&
+                   scale >= .45f && scale <= .75f &&
+                   gem.GetComponent<SpriteShineAnimator>() != null;
+        }), "Silver gems must use the cut-gem art at about 60% scale with an animated shine.");
+
+        DamageZone[] spikes = SceneComponents<DamageZone>().Where(zone =>
+            zone.name.IndexOf("spike", StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
+        Require(spikes.Length >= 6 && spikes.All(spike =>
+        {
+            SpriteRenderer renderer = spike.GetComponent<SpriteRenderer>();
+            float scale = Mathf.Max(Mathf.Abs(spike.transform.localScale.x), Mathf.Abs(spike.transform.localScale.y));
+            return renderer != null && renderer.sprite != null &&
+                   NormalizePath(AssetDatabase.GetAssetPath(renderer.sprite)) == NormalizePath(PolishedSpikeArt) &&
+                   scale >= .35f && scale <= .65f &&
+                   spike.GetComponent<SpriteShineAnimator>() != null &&
+                   SerializedInt(spike, "damage") == 1;
+        }), "Silver spikes must use polished bronze art at about 50% scale, shine, and deal one heart.");
+
+        OscillatingHazard[] movingHazards = SceneComponents<OscillatingHazard>();
+        Require(movingHazards.Length >= 4 &&
+                movingHazards.Any(hazard => Mathf.Abs(SerializedVector2(hazard, "axis").x) > .8f) &&
+                movingHazards.Any(hazard => Mathf.Abs(SerializedVector2(hazard, "axis").y) > .8f),
+            "Silver Level 1 needs multiple moving hazards with both horizontal and vertical double-arrow axes.");
+        Require(SceneComponents<MovingPlatform>().Length >= 2,
+            "Silver Level 1 needs multiple moving platforms matching the map's axis arrows.");
+
+        MineDoorAnimator[] doors = SceneComponents<MineDoorAnimator>();
+        Require(doors.Length == 2 && doors.All(door => DoorAnimatorIsConfigured(door)),
+            "Silver entrance and exit both need closed/open sprites and must open before traversal.");
+        LevelExitDoor[] exits = SceneComponents<LevelExitDoor>();
+        Require(exits.Length == 1 && exits[0].DestinationScene == "SilverDungeonOverview",
+            "Silver Level 1 exit must return to SilverDungeonOverview.");
+        MineDoorAnimator silverExitAnimator = exits.Length == 1
+            ? exits[0].GetComponent<MineDoorAnimator>()
+            : null;
+        Require(silverExitAnimator != null && silverExitAnimator.PassageBlocker != null &&
+                silverExitAnimator.PassageBlocker.enabled &&
+                !silverExitAnimator.PassageBlocker.isTrigger,
+            "Silver Level 1 exit must be solid until its opening animation completes.");
+
+        MineLevelMenuController[] menus = SceneComponents<MineLevelMenuController>();
+        Require(menus.Length == 1, "Silver Level 1 needs one pause/shop menu coordinator.");
+        ValidateMidLevelShop("Silver Level 1", menus[0]);
+        ValidateInputSystemEventSystem("Silver Level 1", false);
     }
 
     private static void ValidateBuildSettings()
     {
-        string[] expected = new[] { Overview, GameOver }.Concat(Levels.Select(level => level.Path)).ToArray();
+        string[] bronze = new[] { Overview, GameOver }.Concat(Levels.Select(level => level.Path)).ToArray();
+        bool silverExists = File.Exists(ProjectFilePath(SilverOverview)) || File.Exists(ProjectFilePath(SilverLevel));
+        string[] expected = silverExists
+            ? bronze.Concat(new[] { SilverOverview, SilverLevel }).ToArray()
+            : bronze;
         string[] actual = EditorBuildSettings.scenes.Where(scene => scene.enabled).Select(scene => scene.path).ToArray();
         Require(actual.SequenceEqual(expected),
-            "Build Settings must contain DungeonOverview, GameOver, then Bronze Mines Levels 1-12 in order.");
+            silverExists
+                ? "Build Settings must contain the Bronze scenes followed by SilverDungeonOverview and SilverLevel1_SilverLode."
+                : "Build Settings must contain DungeonOverview, GameOver, then Bronze Mines Levels 1-12 in order.");
     }
 
     private static BoxCollider2D[] RoutePlatforms(string routeNameFragment)
@@ -1390,6 +1703,67 @@ public static class MineLevelValidator
         return false;
     }
 
+    private static bool ParachuteDescentControllerHasGlobalFlightContract()
+    {
+        Type type = typeof(ParachuteDescentController);
+        return type.GetProperty(nameof(ParachuteDescentController.HoverVerticalSpeed)) != null &&
+               type.GetProperty(nameof(ParachuteDescentController.HoverResponse)) != null &&
+               type.GetProperty(nameof(ParachuteDescentController.FastDescentGravity)) != null &&
+               type.GetProperty(nameof(ParachuteDescentController.MaximumHorizontalSpeed)) != null &&
+               type.GetProperty(nameof(ParachuteDescentController.GliderVerticalInput)) != null &&
+               type.GetProperty(nameof(ParachuteDescentController.IsCameraTrackingDescent)) != null;
+    }
+
+    private static void ValidateDoorAnimation(GameObject doorObject, string label)
+    {
+        MineDoorAnimator[] animators = doorObject.GetComponentsInChildren<MineDoorAnimator>(true);
+        Require(animators.Length == 1 && DoorAnimatorIsConfigured(animators[0]),
+            $"{label} door needs one configured closed-to-open animation before the miner traverses it.");
+    }
+
+    private static bool DoorAnimatorIsConfigured(MineDoorAnimator animator)
+    {
+        if (animator == null || animator.ClosedRenderer == null || animator.OpenRenderer == null ||
+            animator.ClosedRenderer == animator.OpenRenderer ||
+            animator.ClosedRenderer.sprite == null || animator.OpenRenderer.sprite == null ||
+            animator.OpeningSeconds < .2f || animator.ClosingSeconds < .15f)
+        {
+            return false;
+        }
+
+        Vector2 closedSize = animator.ClosedRenderer.bounds.size;
+        Vector2 openSize = animator.OpenRenderer.bounds.size;
+        return Mathf.Abs(closedSize.x - openSize.x) <= Mathf.Max(.08f, closedSize.x * .08f) &&
+               Mathf.Abs(closedSize.y - openSize.y) <= Mathf.Max(.08f, closedSize.y * .08f) &&
+               animator.ClosedRenderer != animator.OpenRenderer &&
+               animator.OpeningSeconds >= .2f && animator.ClosingSeconds >= .15f;
+    }
+
+    private static void ValidateMidLevelShop(string label, MineLevelMenuController menu)
+    {
+        MidLevelShopController[] shops = SceneComponents<MidLevelShopController>();
+        Require(shops.Length == 1, $"{label} needs exactly one in-level shop controller.");
+        MidLevelShopController shop = shops[0];
+        Require(menu != null && menu.MidLevelShop == shop && shop.LevelMenu == menu &&
+                shop.ShopPanel != null && !shop.ShopPanel.activeSelf &&
+                shop.BalanceDisplay != null && shop.StatusDisplay != null &&
+                shop.PlayerHealth != null && shop.DefaultSelection != null,
+            $"{label} in-level shop must be registered, fully wired, and serialized closed.");
+        UnityEngine.UI.Button[] buttons = shop.ShopPanel
+            .GetComponentsInChildren<UnityEngine.UI.Button>(true);
+        Require(buttons.Any(button => HasPersistentListener(button, shop,
+                    nameof(MidLevelShopController.BuyExtraLife))) &&
+                buttons.Any(button => HasPersistentListener(button, shop,
+                    nameof(MidLevelShopController.BuyHealthPotion))) &&
+                buttons.Any(button => HasPersistentListener(button, shop,
+                    nameof(MidLevelShopController.BuyHeartUpgrade))) &&
+                buttons.Any(button => HasPersistentListener(button, shop,
+                    nameof(MidLevelShopController.HideShop))) &&
+                buttons.Any(button => HasPersistentListener(button, shop,
+                    nameof(MidLevelShopController.ReturnToOverview))),
+            $"{label} in-level shop needs wired life, potion, heart, close, and explicit overview buttons.");
+    }
+
     private static T[] SceneComponents<T>() where T : Component
     {
         Scene active = SceneManager.GetActiveScene();
@@ -1432,6 +1806,14 @@ public static class MineLevelValidator
         return property.propertyType == SerializedPropertyType.Vector2
             ? (Vector3)property.vector2Value
             : property.vector3Value;
+    }
+
+    private static Vector2 SerializedVector2(UnityEngine.Object target, string propertyName)
+    {
+        SerializedProperty property = new SerializedObject(target).FindProperty(propertyName);
+        Require(property != null && property.propertyType == SerializedPropertyType.Vector2,
+            $"{target.GetType().Name}.{propertyName} is missing from its serialized contract.");
+        return property.vector2Value;
     }
 
     private static float Range(IEnumerable<float> values)

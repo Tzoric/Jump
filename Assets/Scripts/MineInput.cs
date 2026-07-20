@@ -123,6 +123,44 @@ public static class MineInput
         }
     }
 
+    /// <summary>
+    /// Fixed vertical navigation input used by the hang glider. Keyboard input
+    /// takes priority, followed by the active controller's strongest vertical
+    /// control. Keeping this separate from Interact means Up/W can provide lift
+    /// without repeatedly toggling the canopy.
+    /// </summary>
+    public static float GliderVertical
+    {
+        get
+        {
+            EnsureInitialized();
+            RefreshActiveControllerFromActivity();
+            float keyboard = 0f;
+            if (Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.S)) keyboard -= 1f;
+            if (Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.W)) keyboard += 1f;
+            if (Mathf.Abs(keyboard) > MovementDeadZone) return Mathf.Clamp(keyboard, -1f, 1f);
+
+            if (activeController is Gamepad gamepad)
+            {
+                float stick = gamepad.leftStick.ReadValue().y;
+                float dpad = gamepad.dpad.ReadValue().y;
+                float controller = Mathf.Abs(dpad) > Mathf.Abs(stick) ? dpad : stick;
+                return Mathf.Abs(controller) >= MovementDeadZone ? controller : 0f;
+            }
+
+            if (activeController is Joystick joystick)
+            {
+                float stick = joystick.stick.ReadValue().y;
+                float hat = joystick.hatswitch == null ? 0f : joystick.hatswitch.ReadValue().y;
+                float controller = Mathf.Abs(hat) > Mathf.Abs(stick) ? hat : stick;
+                return Mathf.Abs(controller) >= MovementDeadZone ? controller : 0f;
+            }
+
+            float legacy = Input.GetAxisRaw("Vertical");
+            return Mathf.Abs(legacy) >= MovementDeadZone ? Mathf.Clamp(legacy, -1f, 1f) : 0f;
+        }
+    }
+
     public static Vector2 ControllerMoveVector
     {
         get
@@ -163,18 +201,20 @@ public static class MineInput
         Input.GetKeyUp(KeyCode.Space) || ReadAction(MineButtonAction.Jump).WasReleasedThisFrame();
 
     public static bool InteractPressed =>
-        Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W) ||
+        Input.GetKeyDown(KeyCode.X) || Input.GetKeyDown(KeyCode.UpArrow) ||
+        Input.GetKeyDown(KeyCode.W) ||
         ReadAction(MineButtonAction.Interact).WasPressedThisFrame();
 
-    // Parachute deployment deliberately shares the contextual Interact control,
-    // not Jump. Up/W and the mapped controller Interact button therefore open
-    // the canopy in a descent while Space/B remains available for the landing.
+    // Glider deployment deliberately shares the contextual Interact control,
+    // not Jump. Up/W are reserved for lift after deployment, while keyboard X
+    // and the mapped controller Interact button toggle the canopy.
     public static bool ParachuteHeld =>
-        Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.W) ||
+        Input.GetKey(KeyCode.X) ||
         ReadAction(MineButtonAction.Interact).IsPressed();
 
     public static bool PotionPressed =>
-        Input.GetKeyDown(KeyCode.H) || ReadAction(MineButtonAction.Potion).WasPressedThisFrame();
+        (!PlaytestCheatController.SuppressPotionThisFrame && Input.GetKeyDown(KeyCode.H)) ||
+        ReadAction(MineButtonAction.Potion).WasPressedThisFrame();
 
     public static bool PausePressed =>
         Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.P) ||

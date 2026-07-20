@@ -9,7 +9,7 @@ public sealed class PlayerHealth : MonoBehaviour
     private const char HeartGlyph = '\u2665';
 
     [Header("Health")]
-    [SerializeField, Min(1)] private int maxHealth = 5;
+    [SerializeField, Min(1)] private int maxHealth = 7;
     [SerializeField, Min(0f)] private float invulnerabilitySeconds = 1f;
 
     [Header("Respawn")]
@@ -121,6 +121,54 @@ public sealed class PlayerHealth : MonoBehaviour
         RefreshDisplay();
     }
 
+    /// <summary>Restores all hearts without changing lives or consumables.</summary>
+    public bool RestoreToFullHealth()
+    {
+        if (respawning) return false;
+        SyncHeartCapacityFromProgress();
+        bool changed = currentHealth != maxHealth;
+        currentHealth = maxHealth;
+        RefreshDisplay();
+        return changed;
+    }
+
+    // Friendly alias for gameplay systems that phrase the action as a command.
+    public bool RestoreFullHealth() => RestoreToFullHealth();
+
+    /// <summary>
+    /// Applies heart upgrades purchased while the level is still loaded. New
+    /// capacity is filled by default; existing damage is otherwise preserved.
+    /// </summary>
+    public bool SyncHeartCapacityFromProgress(bool fillAddedHearts = true)
+    {
+        int targetCapacity = Mathf.Max(1, GameProgress.MaxHearts);
+        if (targetCapacity == maxHealth) return false;
+
+        int previousCapacity = maxHealth;
+        maxHealth = targetCapacity;
+        if (fillAddedHearts && !respawning && currentHealth > 0 &&
+            targetCapacity > previousCapacity)
+        {
+            currentHealth += targetCapacity - previousCapacity;
+        }
+
+        currentHealth = Mathf.Clamp(currentHealth, 0, maxHealth);
+        RefreshDisplay();
+        return true;
+    }
+
+    public bool SyncMaxHealthFromProgress(bool fillAddedHearts = true)
+    {
+        return SyncHeartCapacityFromProgress(fillAddedHearts);
+    }
+
+    /// <summary>Refreshes health and life HUD text after a mid-level purchase or cheat.</summary>
+    public void RefreshHud()
+    {
+        SyncHeartCapacityFromProgress();
+        RefreshDisplay();
+    }
+
     public void SetCheckpoint(Vector3 position)
     {
         respawnPosition = position;
@@ -148,6 +196,7 @@ public sealed class PlayerHealth : MonoBehaviour
 
     private void Update()
     {
+        if (maxHealth != GameProgress.MaxHearts) SyncHeartCapacityFromProgress();
         if (!MineLevelMenuController.IsPaused && MineInput.PotionPressed) TryUsePotion();
     }
 

@@ -7,8 +7,12 @@ public sealed class ParachuteDescentController : MonoBehaviour
     [SerializeField] private SpriteRenderer canopyRenderer;
     [SerializeField, Min(0.1f)] private float deployedGravity = 1f;
     [SerializeField, Min(0.5f)] private float deployedTerminalSpeed = 4.25f;
-    [SerializeField, Min(0.5f)] private float closedTerminalSpeed = 12f;
+    [SerializeField, Min(0.5f)] private float closedTerminalSpeed = 7f;
     [SerializeField, Min(0.5f)] private float maximumHorizontalSpeed = 5.5f;
+    [SerializeField, Range(0.1f, 0.9f)] private float verticalInputDeadZone = .35f;
+    [SerializeField, Range(-0.5f, 0.5f)] private float hoverVerticalSpeed;
+    [SerializeField, Min(1f)] private float hoverResponse = 30f;
+    [SerializeField, Min(0.1f)] private float fastDescentGravity = 1.75f;
 
     private Rigidbody2D body;
     private HeroMovement movement;
@@ -27,10 +31,20 @@ public sealed class ParachuteDescentController : MonoBehaviour
     public bool DeployedDuringCurrentDescent => deployedDuringCurrentDescent;
     public bool IsDeploymentRequested => deploymentRequested;
     public float DeployedTerminalSpeed => deployedTerminalSpeed;
+    public float FastDescentTerminalSpeed => closedTerminalSpeed;
+    public float HoverVerticalSpeed => hoverVerticalSpeed;
+    public float HoverResponse => hoverResponse;
+    public float FastDescentGravity => fastDescentGravity;
+    public float MaximumHorizontalSpeed => maximumHorizontalSpeed;
+    public float VerticalInputDeadZone => verticalInputDeadZone;
+    public float GliderVerticalInput { get; private set; }
+    public bool IsHovering => IsDeployed && GliderVerticalInput > verticalInputDeadZone;
+    public float ActiveTerminalSpeed =>
+        GliderVerticalInput < -verticalInputDeadZone ? closedTerminalSpeed : deployedTerminalSpeed;
     public float DescentCenterX { get; private set; }
 
     public void Configure(SpriteRenderer canopy, float slowGravity = 1f,
-        float slowTerminalSpeed = 4.25f, float fastTerminalSpeed = 12f)
+        float slowTerminalSpeed = 4.25f, float fastTerminalSpeed = 7f)
     {
         canopyRenderer = canopy;
         deployedGravity = Mathf.Max(0.1f, slowGravity);
@@ -49,51 +63,86 @@ public sealed class ParachuteDescentController : MonoBehaviour
 
     private void Update()
     {
+        if (movement == null || !movement.isActiveAndEnabled)
+        {
+            previousParachuteHeld = movement != null && movement.ParachuteInputHeld;
+            deploymentRequested = false;
+            cameraTrackingDescent = false;
+            deployedDuringCurrentDescent = false;
+            GliderVerticalInput = 0f;
+            SetDeployed(false);
+            return;
+        }
+
         bool held = movement.ParachuteInputHeld;
         bool pressed = held && !previousParachuteHeld;
         previousParachuteHeld = held;
 
-        if (pressed && (IsInLaunchArea || IsInDescentZone))
+        // Consume Interact presses made while standing. Holding X as the player
+        // walks off a ledge must never arm the glider accidentally.
+        if (movement.IsGrounded)
+        {
+            deploymentRequested = false;
+            cameraTrackingDescent = false;
+            deployedDuringCurrentDescent = false;
+            GliderVerticalInput = 0f;
+            SetDeployed(false);
+            return;
+        }
+
+        if (pressed)
             deploymentRequested = !deploymentRequested;
 
-        bool airborneDescent = IsInDescentZone && !movement.IsGrounded;
-        if (airborneDescent && body.linearVelocityY <= .25f)
-            cameraTrackingDescent = true;
-        if (movement.IsGrounded)
-            cameraTrackingDescent = false;
+        // Descent zones now affect camera framing only. Glider deployment and
+        // physics are available during every airborne section in every level.
+        bool cameraDescent = IsInDescentZone && body.linearVelocityY <= .25f;
+        cameraTrackingDescent = cameraDescent;
 
-        bool shouldDeploy = airborneDescent && deploymentRequested;
+        bool shouldDeploy = deploymentRequested;
         SetDeployed(shouldDeploy);
-        if (shouldDeploy) deployedDuringCurrentDescent = true;
+        if (shouldDeploy)
+        {
+            deployedDuringCurrentDescent = true;
+            GliderVerticalInput = movement.GliderVerticalInput;
+        }
+        else
+        {
+            GliderVerticalInput = 0f;
+        }
     }
 
     private void FixedUpdate()
     {
-        if (!IsInDescentZone) return;
+        if (!IsDeployed) return;
 
-        // Run after HeroMovement so the descent steering cap is deterministic.
-        float terminalSpeed = IsDeployed ? deployedTerminalSpeed : closedTerminalSpeed;
+        // Run after HeroMovement so glider steering and its terminal-speed cap
+        // are deterministic regardless of which level or trigger volume it is in.
+        float verticalVelocity = body.linearVelocityY;
+        if (GliderVerticalInput > verticalInputDeadZone)
+        {
+            body.gravityScale = 0f;
+            verticalVelocity = Mathf.MoveTowards(verticalVelocity, hoverVerticalSpeed,
+                hoverResponse * Time.fixedDeltaTime);
+            verticalVelocity = Mathf.Max(verticalVelocity, -deployedTerminalSpeed);
+        }
+        else if (GliderVerticalInput < -verticalInputDeadZone)
+        {
+            body.gravityScale = fastDescentGravity;
+            verticalVelocity = Mathf.Max(verticalVelocity, -closedTerminalSpeed);
+        }
+        else
+        {
+            body.gravityScale = deployedGravity;
+            verticalVelocity = Mathf.Max(verticalVelocity, -deployedTerminalSpeed);
+        }
+
         body.linearVelocity = new Vector2(
             Mathf.Clamp(body.linearVelocityX, -maximumHorizontalSpeed, maximumHorizontalSpeed),
-            Mathf.Max(body.linearVelocityY, -terminalSpeed));
-    }
-
-    private void LateUpdate()
-    {
-        if (canopyRenderer == null || !canopyRenderer.enabled) return;
-        float tilt = body == null ? 0f : Mathf.Clamp(-body.linearVelocityX * 2.2f, -12f, 12f);
-        canopyRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, tilt);
+            verticalVelocity);
     }
 
     public void EnterDescentZone(float shaftCenterX)
     {
-        if (activeZoneCount == 0)
-        {
-            deployedDuringCurrentDescent = false;
-            // A button held while entering may count as the opening press, but an
-            // already armed chute must not toggle closed at the trigger boundary.
-            if (!deploymentRequested) previousParachuteHeld = false;
-        }
         activeZoneCount++;
         DescentCenterX = shaftCenterX;
     }
@@ -103,17 +152,13 @@ public sealed class ParachuteDescentController : MonoBehaviour
         activeZoneCount = Mathf.Max(0, activeZoneCount - 1);
         if (activeZoneCount == 0)
         {
-            deploymentRequested = false;
             cameraTrackingDescent = false;
-            SetDeployed(false);
         }
     }
 
     public void EnterLaunchArea()
     {
-        bool wasOutside = activeLaunchAreaCount == 0;
         activeLaunchAreaCount++;
-        if (wasOutside && !deploymentRequested) previousParachuteHeld = false;
     }
 
     public void ExitLaunchArea()
@@ -128,13 +173,22 @@ public sealed class ParachuteDescentController : MonoBehaviour
         cameraTrackingDescent = false;
         deployedDuringCurrentDescent = false;
         deploymentRequested = false;
-        previousParachuteHeld = false;
+        // Consume a button that is still held during landing/respawn/reset.
+        // Deployment is a toggle, so reopening must require release + a new press.
+        previousParachuteHeld = movement != null && movement.ParachuteInputHeld;
+        GliderVerticalInput = 0f;
         if (movement != null) movement.SetJumpSuppressed(false);
         SetDeployed(false);
     }
 
     private void SetDeployed(bool deployed)
     {
+        if (IsDeployed == deployed)
+        {
+            if (canopyRenderer != null) canopyRenderer.enabled = deployed;
+            return;
+        }
+
         IsDeployed = deployed;
         if (body != null) body.gravityScale = deployed ? deployedGravity : normalGravity;
         if (canopyRenderer != null) canopyRenderer.enabled = deployed;

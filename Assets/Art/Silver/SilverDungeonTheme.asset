@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8b7d2e543a0f4ac7bd76d319da31bbe1, type: 3}
+  m_Name: SilverDungeonTheme
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonVisualTheme
+  dungeonId: silver
+  displayName: Silver Lode
+  rockTint: {r: 0.43529412, g: 0.46666667, b: 0.5058824, a: 1}
+  metalShadow: {r: 0.22745098, g: 0.2627451, b: 0.30980393, a: 1}
+  metalBase: {r: 0.6509804, g: 0.70980394, b: 0.78039217, a: 1}
+  metalHighlight: {r: 0.92156863, g: 0.9607843, b: 1, a: 1}
+  metalGlint: {r: 1, g: 1, b: 1, a: 1}
+  ambientLight: {r: 0.68235296, g: 0.7529412, b: 0.8627451, a: 1}
+  keyLight: {r: 0.92156863, g: 0.9607843, b: 1, a: 1}
+  accentLight: {r: 0.6039216, g: 0.8117647, b: 1, a: 1}
+  metalFlakeDensity: 0.48
+  metalFlakeSeed: 2701
+  rockFillSprite: {fileID: 21300000, guid: e9a100b3f1a976143af3ea7f4667e0eb, type: 3}
+  rockDetailSprite: {fileID: 21300000, guid: b23b3612cacb4ff44971347f5f5e0a23, type: 3}
+  wallSprite: {fileID: 21300000, guid: b23b3612cacb4ff44971347f5f5e0a23, type: 3}
+  platformSprite: {fileID: 21300000, guid: e9a100b3f1a976143af3ea7f4667e0eb, type: 3}
+  metalFlakeSprite: {fileID: 0}
+  glintSprite: {fileID: 0}
+  spikeSprite: {fileID: 21300000, guid: c82e9bc62a507b54c9c0d3ace9858df6, type: 3}
+  greenGemSprite: {fileID: 21300000, guid: f49d091c75a136e45a82b407656498d9, type: 3}
+  blueGemSprite: {fileID: 21300000, guid: f49d091c75a136e45a82b407656498d9, type: 3}
+  purpleGemSprite: {fileID: 21300000, guid: f49d091c75a136e45a82b407656498d9, type: 3}
+  keySprite: {fileID: 21300000, guid: 9c55a4322ebad9a49b5ede62202e94d5, type: 3}
+  chestClosedSprite: {fileID: 21300000, guid: 457e52595b581f4448658dce37e9b31b, type: 3}
+  chestOpenSprite: {fileID: 21300000, guid: 36141d8fb95bc4f4b8763554a044ea37, type: 3}
+  doorClosedSprite: {fileID: 21300000, guid: e1ceaae63f0279b4d9724a928fb74ea0, type: 3}
+  doorOpenSprite: {fileID: 21300000, guid: bc9f7ea133374e04a989076d152ad2ac, type: 3}
+  hangGliderSprite: {fileID: 21300000, guid: 58d92caba5a525d4a858e91da829c150, type: 3}

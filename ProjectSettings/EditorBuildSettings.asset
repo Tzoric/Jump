@@ -47,6 +47,12 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Level12_DeepworksGauntlet.unity
     guid: caa52dbc7fa79a6459d7368583076a87
+  - enabled: 1
+    path: Assets/Scenes/SilverDungeonOverview.unity
+    guid: 0ce47084048c62e42ac6239f946540aa
+  - enabled: 1
+    path: Assets/Scenes/SilverLevel1_SilverLode.unity
+    guid: 0bf181428313e08418058b13877c4749
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
   m_UseUCBPForAssetBundles: 0

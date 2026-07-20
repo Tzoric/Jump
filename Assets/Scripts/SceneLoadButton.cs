@@ -6,10 +6,12 @@ using UnityEngine.UI;
 public sealed class SceneLoadButton : MonoBehaviour
 {
     [SerializeField] private string targetScene;
+    [SerializeField] private bool beginPlaytestRun;
 
     private Button button;
 
     public string TargetScene => targetScene;
+    public bool BeginsPlaytestRun => beginPlaytestRun;
 
     private void Awake()
     {
@@ -25,9 +27,10 @@ public sealed class SceneLoadButton : MonoBehaviour
         }
     }
 
-    public void Configure(string sceneName)
+    public void Configure(string sceneName, bool startPlaytestRun = false)
     {
         targetScene = sceneName;
+        beginPlaytestRun = startPlaytestRun;
     }
 
     public void LoadTargetScene()
@@ -36,6 +39,11 @@ public sealed class SceneLoadButton : MonoBehaviour
         {
             Debug.LogError("SceneLoadButton has no target scene.");
             return;
+        }
+
+        if (beginPlaytestRun && GameProgress.PlaytestAccessEnabled)
+        {
+            GameProgress.BeginPlaytestRun();
         }
 
         SceneManager.LoadScene(targetScene);
